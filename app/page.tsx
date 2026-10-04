@@ -347,7 +347,7 @@ export default function Home() {
             <span className="h-3 w-3 rounded-full bg-emerald-500 animate-pulse" />
 
             <h1 className="text-2xl font-bold tracking-tight">
-              Co-Dev Studio
+              Build_Core
             </h1>
           </div>
 
