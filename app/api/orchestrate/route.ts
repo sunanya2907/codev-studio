@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { auth } from "@/auth";
-import { db } from "@/lib/db";
+import { db } from "../../../lib/db";
 
 export async function POST(req: Request) {
   try {
