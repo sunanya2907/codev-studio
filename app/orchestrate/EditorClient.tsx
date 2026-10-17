@@ -1,10 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
 
 type Agent = "architect" | "frontend" | "backend" | "database";
+
+interface HistoryItem {
+  id: string;
+  prompt: string;
+  spec: string;
+  frontend: string;
+  backend: string;
+  database: string;
+  createdAt: string;
+}
 
 export default function EditorClient({ userName }: { userName: string | null | undefined }) {
   const [prompt, setPrompt] = useState("");
@@ -38,6 +48,20 @@ export default function EditorClient({ userName }: { userName: string | null | u
   // Pricing & Usage State (3 free uses per month)
   const [generationsLeft, setGenerationsLeft] = useState(3);
   const [showPricingModal, setShowPricingModal] = useState(false);
+
+  // History State
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+
+  // Fetch generation history on load
+  useEffect(() => {
+    fetch("/api/history")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.history) setHistory(data.history);
+      })
+      .catch(() => {});
+  }, [loading]);
 
   // ============================================================
   // DOMAIN SEARCH & SUGGESTIONS HANDLER
@@ -392,9 +416,18 @@ CMD ["npm", "start"]
               <span className="h-3 w-3 rounded-full bg-emerald-500 animate-pulse" />
               <h1 className="text-2xl font-bold tracking-tight">Build_Core</h1>
             </div>
-            <span className="text-[11px] font-mono px-2 py-1 rounded bg-neutral-900 border border-neutral-800 text-neutral-400">
-              Free Uses: <strong className="text-yellow-400">{generationsLeft}/3</strong>
-            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowHistoryModal(true)}
+                className="text-[11px] font-mono px-2.5 py-1 rounded bg-neutral-900 border border-neutral-800 text-blue-400 hover:text-blue-300 transition-colors"
+              >
+                History ({history.length})
+              </button>
+              <span className="text-[11px] font-mono px-2 py-1 rounded bg-neutral-900 border border-neutral-800 text-neutral-400">
+                Free Uses: <strong className="text-yellow-400">{generationsLeft}/3</strong>
+              </span>
+            </div>
           </div>
           <p className="text-neutral-400 text-sm mb-6">
             Multi-Agent Architecture with Live Interactive Preview.
@@ -729,6 +762,59 @@ CMD ["npm", "start"]
           </div>
         )}
       </section>
+
+      {/* HISTORY MODAL */}
+      {showHistoryModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-xl p-6 text-white relative shadow-2xl max-h-[80vh] flex flex-col">
+            <button
+              onClick={() => setShowHistoryModal(false)}
+              className="absolute top-4 right-4 text-neutral-400 hover:text-white text-lg font-bold"
+            >
+              ✕
+            </button>
+
+            <div className="mb-6">
+              <span className="px-3 py-1 rounded-full bg-blue-500/10 text-blue-400 text-xs font-bold uppercase tracking-wider">
+                Previous Generations
+              </span>
+              <h2 className="text-2xl font-extrabold mt-2 tracking-tight">Your Generation History</h2>
+              <p className="text-neutral-400 text-xs mt-1">
+                Select any past project to instantly load its code back into the multi-agent editor.
+              </p>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-3 pr-2">
+              {history.length === 0 ? (
+                <div className="text-center py-12 text-neutral-500 text-sm">
+                  No generation history found yet. Build an app to see it here!
+                </div>
+              ) : (
+                history.map((item) => (
+                  <div
+                    key={item.id}
+                    onClick={() => {
+                      setPrompt(item.prompt);
+                      setSpec(item.spec);
+                      setFrontendCode(item.frontend);
+                      setBackendCode(item.backend);
+                      setDatabaseCode(item.database);
+                      setShowHistoryModal(false);
+                    }}
+                    className="p-4 bg-neutral-950 border border-neutral-800 hover:border-blue-500/60 rounded-xl cursor-pointer transition-all flex flex-col gap-1.5"
+                  >
+                    <div className="flex items-center justify-between text-[10px] text-neutral-500 font-mono">
+                      <span>ID: {item.id.slice(-6)}</span>
+                      <span>{new Date(item.createdAt).toLocaleDateString()}</span>
+                    </div>
+                    <p className="text-sm font-semibold text-neutral-200 line-clamp-2">{item.prompt}</p>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* PRICING & UPGRADE MODAL */}
       {showPricingModal && (

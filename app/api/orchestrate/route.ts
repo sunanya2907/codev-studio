@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { auth } from "@/auth";
+import { db } from "@/lib/db";
 
 export async function POST(req: Request) {
   try {
@@ -64,11 +66,35 @@ export async function POST(req: Request) {
       callGemini(databasePrompt)
     ]);
 
+    const cleanSpec = spec.trim();
+    const cleanFrontend = stripMarkdown(frontendCode);
+    const cleanBackend = stripMarkdown(backendCode);
+    const cleanDatabase = stripMarkdown(databaseCode);
+
+    // Save generation to history in DB if user is signed in
+    const session = await auth();
+    if (session?.user?.id) {
+      try {
+        await db.generationHistory.create({
+          data: {
+            userId: session.user.id,
+            prompt: prompt.trim(),
+            spec: cleanSpec,
+            frontend: cleanFrontend,
+            backend: cleanBackend,
+            database: cleanDatabase,
+          },
+        });
+      } catch (dbErr) {
+        console.error("Failed to save generation history:", dbErr);
+      }
+    }
+
     return NextResponse.json({
-      spec: spec.trim(),
-      frontend: stripMarkdown(frontendCode),
-      backend: stripMarkdown(backendCode),
-      database: stripMarkdown(databaseCode)
+      spec: cleanSpec,
+      frontend: cleanFrontend,
+      backend: cleanBackend,
+      database: cleanDatabase
     });
 
   } catch (error: any) {
