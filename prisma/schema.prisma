@@ -15,8 +15,13 @@ enum Tier {
 }
 
 model User {
-  id           String   @id @default(uuid())
-  email        String   @unique
-  tier         Tier     @default(FREE)
-  tokenBalance Int      @default(3)
+  id               String    @id @default(uuid())
+  name             String?
+  email            String    @unique
+  tier             Tier      @default(FREE)
+  tokenBalance     Int       @default(3)
+  projects         Project[]
+  history          GenerationHistory[]
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 }
