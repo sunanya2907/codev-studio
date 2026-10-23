@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
 import {
@@ -28,6 +29,7 @@ import {
   Plus,
   X,
   Crown,
+  FileText,
 } from "lucide-react";
 
 interface HistoryItem {
@@ -198,6 +200,8 @@ export default function EditorClient({
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
   const [showPricingModal, setShowPricingModal] = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [termsChecked, setTermsChecked] = useState(false);
   const [activeTab, setActiveTab] = useState<"editor" | "preview">("editor");
   const [activeAgentIndex, setActiveAgentIndex] = useState<number>(0);
 
@@ -235,7 +239,17 @@ export default function EditorClient({
   useEffect(() => {
     fetchBillingStatus();
     fetchHistory();
+    const accepted = localStorage.getItem("build_core_terms_accepted");
+    if (!accepted) {
+      setShowTermsModal(true);
+    }
   }, []);
+
+  const handleAcceptTermsModal = () => {
+    if (!termsChecked) return;
+    localStorage.setItem("build_core_terms_accepted", "true");
+    setShowTermsModal(false);
+  };
 
   const fetchBillingStatus = async () => {
     try {
@@ -556,6 +570,15 @@ ${buffers.frontend.replace(/</g, "&lt;").replace(/>/g, "&gt;")}
               <Coins className="w-4 h-4 text-amber-400 shrink-0" />
               {sidebarOpen && <span>Plans & $1 Tokens</span>}
             </button>
+
+            <Link
+              href="/terms"
+              target="_blank"
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-900/60 transition"
+            >
+              <FileText className="w-4 h-4 text-slate-400 shrink-0" />
+              {sidebarOpen && <span>Terms & Conditions</span>}
+            </Link>
           </nav>
         </div>
 
@@ -1148,6 +1171,66 @@ ${buffers.frontend.replace(/</g, "&lt;").replace(/>/g, "&gt;")}
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5. MANDATORY TERMS & AI AGENT TRAINING CONSENT MODAL */}
+      {showTermsModal && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-[#0E1424] border border-slate-800 rounded-3xl max-w-lg w-full p-6 md:p-8 shadow-2xl">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+              <ShieldCheck className="w-4 h-4" /> Legal & Data Usage Consent
+            </span>
+            <h3 className="text-xl font-extrabold text-white mt-1 mb-3">
+              Terms & Conditions Update
+            </h3>
+            <p className="text-xs text-slate-300 leading-relaxed mb-4">
+              Welcome to <strong>Build_Core</strong>. Before orchestrating projects with our 5 AI agents, please review and accept our Terms and Conditions:
+            </p>
+            <div className="bg-[#090D16] border border-slate-800 rounded-xl p-4 text-xs text-slate-300 space-y-2 max-h-48 overflow-y-auto mb-4">
+              <p>
+                • <strong>AI Agent Training License:</strong> By submitting prompts, specifications, or code inputs, you grant Build_Core a worldwide, royalty-free license to store, analyze, and use your prompts and generated outputs to train, fine-tune, and improve our AI agents and platform models.
+              </p>
+              <p>
+                • <strong>Code Ownership:</strong> You retain full ownership and commercial rights to the code and ZIP exports generated from your prompts.
+              </p>
+              <p>
+                • <strong>Confidentiality Caution:</strong> Do not enter production secret keys, passwords, or sensitive personal data into prompts.
+              </p>
+            </div>
+
+            <label className="flex items-start gap-2.5 text-xs text-slate-300 cursor-pointer select-none mb-5">
+              <input
+                type="checkbox"
+                checked={termsChecked}
+                onChange={(e) => setTermsChecked(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-slate-700 bg-slate-900 text-amber-500 cursor-pointer accent-amber-400"
+              />
+              <span>
+                I have read and agree to the{" "}
+                <Link
+                  href="/terms"
+                  target="_blank"
+                  className="text-amber-400 underline hover:text-amber-300 font-semibold"
+                >
+                  Terms & Conditions
+                </Link>
+                , including the use of my prompt and generation data to train Build_Core AI agents.
+              </span>
+            </label>
+
+            <button
+              onClick={handleAcceptTermsModal}
+              disabled={!termsChecked}
+              className={`w-full py-3 rounded-xl font-bold text-xs uppercase tracking-wider transition ${
+                termsChecked
+                  ? "bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-500 text-white hover:brightness-110 shadow-lg shadow-violet-600/25 cursor-pointer"
+                  : "bg-slate-800 text-slate-500 cursor-not-allowed"
+              }`}
+            >
+              Accept & Continue to Studio
+            </button>
           </div>
         </div>
       )}
