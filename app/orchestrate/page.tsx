@@ -12,6 +12,6 @@ export default async function OrchestratePage() {
     redirect("/");
   }
 
-  // 3. If authenticated, load the Triple-Agent Editor and pass their name in
-  return <EditorClient userName={session.user.name} />;
+  // 3. If authenticated, load the Editor and pass a guaranteed string name
+  return <EditorClient userName={session.user.name || "Developer"} />;
 }
