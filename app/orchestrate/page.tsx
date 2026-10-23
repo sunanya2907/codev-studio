@@ -1,17 +1,22 @@
-// app/orchestrate/page.tsx
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
+import { db } from "@/lib/db";
 import EditorClient from "./EditorClient";
 
 export default async function OrchestratePage() {
-  // 1. Verify the user is logged in
   const session = await auth();
 
-  // 2. If no session exists, bounce them back to the landing page
-  if (!session?.user) {
+  if (!session?.user?.email) {
     redirect("/");
   }
 
-  // 3. If authenticated, load the Editor and pass a guaranteed string name
+  const dbUser = await db.user.findUnique({
+    where: { email: session.user.email },
+  });
+
+  if (!dbUser || !dbUser.termsAccepted) {
+    redirect("/terms-consent");
+  }
+
   return <EditorClient userName={session.user.name || "Developer"} />;
 }
