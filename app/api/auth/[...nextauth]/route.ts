@@ -1,3 +1,2 @@
-import { handlers } from "@/auth"; // Points to the auth.ts file you just made
-
+import { handlers } from "@/lib/auth";
 export const { GET, POST } = handlers;
