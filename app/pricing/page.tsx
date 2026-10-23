@@ -1,81 +1,240 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import React, { useState } from "react";
+import Link from "next/link";
+import { Check, Coins, Crown, Plus, X } from "lucide-react";
+
+const PLAN_DETAILS = [
+  {
+    id: "FREE",
+    name: "Free Plan",
+    price: "$0",
+    period: "/ month",
+    badge: "3 Monthly Trials",
+    desc: "Only Agent 1 (Architect Spec) is visible.",
+    features: [
+      "3 Monthly Trial Builds",
+      "Agent 1: Architect Spec Visible",
+      "Locked: Agents 2, 3, 4 & 5",
+    ],
+  },
+  {
+    id: "STANDARD",
+    name: "Standard Plan",
+    price: "$9",
+    period: "/ month",
+    badge: "10 Tokens Included",
+    tag: "Best Value",
+    desc: "Unlocks all 5 AI agents + Live Preview & ZIP Export.",
+    features: [
+      "10 Monthly Generation Tokens",
+      "All 5 Full-Stack Agents Unlocked",
+      "Live Preview & ZIP Export",
+      "$1 Extra Token Top-Ups Anytime",
+    ],
+  },
+  {
+    id: "PRO",
+    name: "Pro Plan",
+    price: "$49",
+    period: "/ month",
+    badge: "50 Tokens Included",
+    tag: "Popular",
+    desc: "High-volume token allowance for power builders.",
+    features: [
+      "50 Monthly Generation Tokens",
+      "All 5 Full-Stack Agents Unlocked",
+      "Unlimited History & Priority Build",
+      "$1 Extra Token Top Ups Anytime",
+    ],
+  },
+  {
+    id: "EXCLUSIVE",
+    name: "Exclusive Plan",
+    price: "Custom",
+    period: "Monthly Billing",
+    badge: "250+ Custom Tokens",
+    desc: "Custom agent customization & dedicated monthly billing.",
+    features: [
+      "250+ Custom Monthly Token Volume",
+      "Custom Agent System Rules & Prompts",
+      "Consolidated Monthly Billing",
+      "On Demand $1 Extra Token Top-Ups",
+    ],
+  },
+];
 
 export default function PricingPage() {
-  const router = useRouter();
-  const [proStatus, setProStatus] = useState(false);
+  const [extraTokensCount, setExtraTokensCount] = useState<number>(5);
+  const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
+
+  const handleSelectPlan = async (planId: string) => {
+    setLoadingPlan(planId);
+    try {
+      const res = await fetch("/api/billing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "UPGRADE_PLAN", plan: planId }),
+      });
+      if (res.ok) {
+        window.location.href = "/orchestrate";
+      } else {
+        alert("Failed to update plan.");
+      }
+    } catch (err) {
+      alert("Error updating plan.");
+    } finally {
+      setLoadingPlan(null);
+    }
+  };
+
+  const handleBuyTokens = async (count: number) => {
+    setLoadingPlan("TOPUP");
+    try {
+      const res = await fetch("/api/billing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "BUY_TOKENS", extraTokens: count }),
+      });
+      if (res.ok) {
+        alert(`Successfully purchased ${count} extra tokens!`);
+      } else {
+        alert("Failed to purchase tokens.");
+      }
+    } catch (err) {
+      alert("Error purchasing tokens.");
+    } finally {
+      setLoadingPlan(null);
+    }
+  };
 
   return (
-    <main className="min-h-screen bg-neutral-950 text-white flex flex-col items-center justify-center p-6">
-      <div className="max-w-4xl w-full">
+    <main className="min-h-screen bg-[#070A12] text-white p-6 md:p-12 flex flex-col items-center justify-center font-sans">
+      <div className="bg-[#0E1424] border border-slate-800 rounded-3xl max-w-6xl w-full p-6 md:p-8 shadow-2xl relative">
+        
         {/* Header */}
-        <div className="text-center mb-12">
-          <span className="px-3 py-1 rounded-full bg-yellow-500/10 text-yellow-400 text-xs font-bold uppercase tracking-wider">
-            Build_Core Subscription Tiers
-          </span>
-          <h1 className="text-4xl font-extrabold mt-3 tracking-tight">Choose Your Deployment Power</h1>
-          <p className="text-neutral-400 text-sm mt-2">
-            Select a plan to configure your multi-agent architecture and cloud infrastructure.
-          </p>
-        </div>
-
-        {/* Pricing Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
-          {/* Free Tier */}
-          <div className="border border-neutral-800 rounded-2xl p-8 bg-neutral-900/50 flex flex-col justify-between">
-            <div>
-              <h3 className="font-bold text-lg text-neutral-200">Free Explorer</h3>
-              <div className="text-3xl font-black mt-3">$0 <span className="text-sm font-normal text-neutral-500">/mo</span></div>
-              <ul className="text-xs text-neutral-400 mt-6 space-y-3">
-                <li>✓ 3 app generations per month</li>
-                <li>✓ Standard .zip project exports</li>
-                <li>✓ Live interactive preview</li>
-                <li>✗ Advanced Agent 5 Cloud Deploy    </li>
-              </ul>
-            </div>
-            <button
-              onClick={() => router.push("/orchestrate")}
-              className="mt-8 w-full py-3 bg-neutral-800 hover:bg-neutral-700 text-white text-sm rounded-xl font-bold transition-colors"
-            >
-              Continue with Free
-            </button>
+        <div className="flex items-center justify-between pb-6 mb-8 border-b border-slate-800">
+          <div>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+              <Crown className="w-3.5 h-3.5" /> BUILD CORE PLANS & TOKEN BILLING
+            </span>
+            <h1 className="text-2xl md:text-3xl font-extrabold text-white mt-1">
+              Unlock All 5 AI Agents or Top Up Extra Tokens ($1)
+            </h1>
           </div>
-
-          {/* Pro Tier (Coming Soon) */}
-          <div className="border-2 border-yellow-500/80 rounded-2xl p-8 bg-gradient-to-b from-yellow-950/20 to-neutral-900/50 flex flex-col justify-between relative shadow-xl shadow-yellow-500/10">
-            <div className="absolute -top-3 right-6 bg-yellow-500 text-black text-[10px] font-black uppercase px-3 py-1 rounded-full">
-              Recommended
-            </div>
-            <div>
-              <h3 className="font-bold text-lg text-yellow-400">Pro Builder</h3>
-              <div className="text-3xl font-black mt-3">$29 <span className="text-sm font-normal text-neutral-400">/mo</span></div>
-              <ul className="text-xs text-neutral-300 mt-6 space-y-3">
-                <li>✓ <strong>Unlimited</strong> app generations</li>
-                <li>✓ Direct GitHub & Vercel deployment</li>
-                <li>✓ AI Domain Suggestion & Registry</li>
-                <li>✓ Priority multi-agent execution</li>
-              </ul>
-            </div>
-            <button
-              onClick={() => setProStatus(true)}
-              disabled={proStatus}
-              className="mt-8 w-full py-3 bg-yellow-500 hover:bg-yellow-400 disabled:bg-neutral-800 disabled:text-neutral-500 text-black text-sm rounded-xl font-extrabold transition-all shadow cursor-pointer disabled:cursor-not-allowed"
-            >
-              {proStatus ? "Coming Soon..." : "Upgrade to Pro ($29/mo)"}
-            </button>
-          </div>
-        </div>
-
-        <div className="text-center">
-          <button
-            onClick={() => router.push("/workspace")}
-            className="text-xs text-neutral-500 hover:text-neutral-300 underline"
+          <Link
+            href="/workspace"
+            className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 transition"
+            title="Close"
           >
-            ← Back to Workspace Dashboard
-          </button>
+            <X className="w-5 h-5" />
+          </Link>
         </div>
+
+        {/* 4 Plans Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          {PLAN_DETAILS.map((plan) => {
+            const isStandard = plan.id === "STANDARD";
+            const isPro = plan.id === "PRO";
+
+            return (
+              <div
+                key={plan.id}
+                className={`rounded-2xl p-5 flex flex-col justify-between border transition ${
+                  isPro
+                    ? "bg-gradient-to-b from-violet-950/40 to-slate-900/90 border-violet-500 shadow-xl shadow-violet-500/10"
+                    : isStandard
+                    ? "bg-slate-900/90 border-amber-500/60 shadow-xl shadow-amber-500/5"
+                    : "bg-slate-900/50 border-slate-800"
+                }`}
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="font-bold text-base text-white">{plan.name}</h3>
+                    {plan.tag && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                        {plan.tag}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="my-3">
+                    <span className="text-3xl font-extrabold text-white">{plan.price}</span>
+                    <span className="text-xs text-slate-400 ml-1">{plan.period}</span>
+                  </div>
+
+                  <div className="inline-block px-2.5 py-1 rounded-md bg-violet-500/15 border border-violet-500/30 text-violet-300 text-[11px] font-bold mb-3">
+                    {plan.badge}
+                  </div>
+
+                  <p className="text-xs text-slate-400 mb-4">{plan.desc}</p>
+
+                  <ul className="space-y-2 text-xs text-slate-200 mb-6">
+                    {plan.features.map((f, idx) => (
+                      <li key={idx} className="flex items-start gap-2">
+                        <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                        <span>{f}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <button
+                  onClick={() => handleSelectPlan(plan.id)}
+                  disabled={loadingPlan === plan.id}
+                  className={`w-full py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition shadow-lg ${
+                    plan.id === "FREE"
+                      ? "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                      : isStandard
+                      ? "bg-gradient-to-r from-amber-400 to-orange-500 text-slate-950 hover:brightness-110 shadow-amber-500/20"
+                      : isPro
+                      ? "bg-gradient-to-r from-violet-600 to-cyan-500 text-white hover:brightness-110 shadow-violet-600/25"
+                      : "bg-slate-800 text-white hover:bg-slate-700 border border-slate-700"
+                  }`}
+                >
+                  {loadingPlan === plan.id ? "Processing..." : `Select ${plan.name}`}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Extra Token Top-Up Bar */}
+        <div className="rounded-2xl bg-[#090D16] border border-amber-500/40 p-5 flex flex-col md:flex-row items-center justify-between gap-4 shadow-xl">
+          <div>
+            <div className="flex items-center gap-2 text-amber-400 font-bold text-sm">
+              <Coins className="w-4 h-4" />
+              <span>Need More Tokens This Month? Buy Extra Tokens for $1 Each</span>
+            </div>
+            <p className="text-xs text-slate-400 mt-1">
+              Finished your monthly plan tokens early? Top up extra tokens instantly at <strong className="text-slate-200">$1 per token</strong> without changing your subscription.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="flex items-center bg-slate-900 border border-slate-700 rounded-xl px-3 py-2">
+              <input
+                type="number"
+                min={1}
+                max={500}
+                value={extraTokensCount}
+                onChange={(e) => setExtraTokensCount(Math.max(1, Number(e.target.value)))}
+                className="w-12 bg-transparent text-center font-bold text-sm text-white focus:outline-none"
+              />
+              <span className="text-xs text-slate-400 ml-1">Tokens</span>
+            </div>
+
+            <button
+              onClick={() => handleBuyTokens(extraTokensCount)}
+              disabled={loadingPlan === "TOPUP"}
+              className="px-5 py-2.5 rounded-xl font-extrabold text-xs uppercase tracking-wider text-slate-950 bg-gradient-to-r from-amber-400 to-yellow-300 hover:brightness-110 flex items-center gap-1.5 shadow-lg shadow-amber-500/20 transition cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              {loadingPlan === "TOPUP" ? "Adding..." : `Buy for $${extraTokensCount * 1}`}
+            </button>
+          </div>
+        </div>
+
       </div>
     </main>
   );
