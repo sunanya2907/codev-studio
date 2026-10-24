@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
+import { buildPreviewHtml } from "@/lib/preview";
+import { TIER_TOKENS, CUSTOMIZE_COST } from "@/lib/plans";
 import {
   Menu,
   Sparkles,
@@ -189,19 +190,30 @@ const PLAN_DETAILS = [
   },
 ];
 
+// If the server times out, Vercel answers with an HTML error page instead of JSON.
+// Calling res.json() on that throws "Unexpected token '<'" - show something readable instead.
+async function readJson(res: Response) {
+  try {
+    return await res.json();
+  } catch {
+    return {
+      error:
+        res.status === 504 || res.status === 408
+          ? "The request timed out. Please try again."
+          : `Server error (${res.status}). Please try again.`,
+    };
+  }
+}
+
 export default function EditorClient({
   userName = "Developer",
 }: {
   userName?: string;
 }) {
-  const router = useRouter();
-
   // Navigation & View States
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
   const [showPricingModal, setShowPricingModal] = useState(false);
-  const [showTermsModal, setShowTermsModal] = useState(false);
-  const [termsChecked, setTermsChecked] = useState(false);
   const [activeTab, setActiveTab] = useState<"editor" | "preview">("editor");
   const [activeAgentIndex, setActiveAgentIndex] = useState<number>(0);
 
@@ -233,23 +245,13 @@ export default function EditorClient({
 
   const [historyList, setHistoryList] = useState<HistoryItem[]>([]);
 
-  const maxTokensForPlan =
-    tier === "FREE" ? 3 : tier === "STANDARD" ? 10 : tier === "PRO" ? 50 : 250;
+  const maxTokensForPlan = TIER_TOKENS[tier];
 
   useEffect(() => {
     fetchBillingStatus();
     fetchHistory();
-    const accepted = localStorage.getItem("build_core_terms_accepted");
-    if (!accepted) {
-      setShowTermsModal(true);
-    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const handleAcceptTermsModal = () => {
-    if (!termsChecked) return;
-    localStorage.setItem("build_core_terms_accepted", "true");
-    setShowTermsModal(false);
-  };
 
   const fetchBillingStatus = async () => {
     try {
@@ -288,7 +290,7 @@ export default function EditorClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "UPGRADE_PLAN", plan: selectedPlan }),
       });
-      const data = await res.json();
+      const data = await readJson(res);
       if (res.ok) {
         setTier(data.tier);
         setTokenBalance(data.tokenBalance);
@@ -315,7 +317,7 @@ export default function EditorClient({
           extraTokens: countToBuy,
         }),
       });
-      const data = await res.json();
+      const data = await readJson(res);
       if (res.ok) {
         setTokenBalance(data.tokenBalance);
         setShowPricingModal(false);
@@ -347,7 +349,7 @@ export default function EditorClient({
         body: JSON.stringify({ prompt }),
       });
 
-      const data = await res.json();
+      const data = await readJson(res);
       if (!res.ok) {
         if (data.code === "OUT_OF_TOKENS" || data.code === "PLAN_LOCKED") {
           setShowPricingModal(true);
@@ -397,6 +399,12 @@ export default function EditorClient({
     }
     if (!customInstruction.trim()) return;
 
+    // Customizing costs tokens (same as the server enforces).
+    if (tokenBalance < CUSTOMIZE_COST) {
+      setShowPricingModal(true);
+      return;
+    }
+
     setIsGenerating(true);
     try {
       const key = currentAgent.key as keyof typeof buffers;
@@ -411,7 +419,7 @@ export default function EditorClient({
         }),
       });
 
-      const data = await res.json();
+      const data = await readJson(res);
       if (!res.ok) {
         if (data.code === "PLAN_LOCKED" || data.code === "OUT_OF_TOKENS") {
           setShowPricingModal(true);
@@ -426,6 +434,9 @@ export default function EditorClient({
         ...prev,
         [key]: updatedValue,
       }));
+      if (typeof data.tokenBalance === "number") {
+        setTokenBalance(data.tokenBalance);
+      }
       setCustomInstruction("");
     } catch (e: any) {
       alert(e.message || "Failed to customize");
@@ -461,38 +472,12 @@ export default function EditorClient({
     setTimeout(() => setCopied(false), 1800);
   };
 
-  const getPreviewHtml = () => {
-    return `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <script src="https://cdn.tailwindcss.com"></script>
-          <style>body { background-color: #090d16; color: white; font-family: sans-serif; margin: 0; }</style>
-        </head>
-        <body>
-          <div id="preview-root" class="p-6">
-            <div class="max-w-2xl mx-auto bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-2xl">
-              <div class="flex items-center justify-between border-b border-slate-800 pb-4 mb-5">
-                <div class="flex items-center gap-2">
-                  <span class="w-3 h-3 rounded-full bg-emerald-400"></span>
-                  <span class="font-bold text-lg tracking-tight">Live Interactive Preview</span>
-                </div>
-                <span class="text-xs px-2.5 py-1 rounded-full bg-violet-500/20 text-violet-300 border border-violet-500/30">
-                  Synced with Agent 1 & 2
-                </span>
-              </div>
-              <p class="text-sm text-slate-300 mb-4 leading-relaxed">
-                <strong>Active Prompt:</strong> ${prompt || "Default Starter Template"}
-              </p>
-              <div class="bg-slate-950 border border-slate-800/80 rounded-xl p-4 font-mono text-xs text-cyan-300 overflow-x-auto whitespace-pre-wrap max-h-96">
-${buffers.frontend.replace(/</g, "&lt;").replace(/>/g, "&gt;")}
-              </div>
-            </div>
-          </div>
-        </body>
-      </html>
-    `;
-  };
+  // Re-compiled only when the generated frontend changes (not on every keystroke elsewhere),
+  // so typing in the prompt box never reloads the running preview.
+  const previewHtml = useMemo(
+    () => buildPreviewHtml(buffers.frontend),
+    [buffers.frontend]
+  );
 
   const currentCodeValue = buffers[currentAgent.key as keyof typeof buffers];
   const usagePercent = Math.min(
@@ -669,6 +654,7 @@ ${buffers.frontend.replace(/</g, "&lt;").replace(/>/g, "&gt;")}
                       frontend: item.frontend,
                       backend: item.backend,
                       database: item.database,
+                      qa: "# Agent 5 QA Report\n\nQA reports are not saved in history. Run a new build to generate one.",
                     }));
                     setShowHistoryDrawer(false);
                   }}
@@ -712,8 +698,9 @@ ${buffers.frontend.replace(/</g, "&lt;").replace(/>/g, "&gt;")}
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               rows={4}
+              maxLength={500}
               placeholder="e.g. A task manager with PostgreSQL database, user auth, and analytics..."
-              className="w-full bg-[#0B0F19] border border-slate-800/90 rounded-xl p-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-violet-500 resize-none"
+              className="select-text w-full bg-[#0B0F19] border border-slate-800/90 rounded-xl p-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-violet-500 resize-none"
             />
 
             <button
@@ -930,7 +917,7 @@ ${buffers.frontend.replace(/</g, "&lt;").replace(/>/g, "&gt;")}
                     setBuffers((prev) => ({ ...prev, [key]: e.target.value }));
                   }}
                   readOnly={isCurrentAgentLocked}
-                  className={`w-full flex-1 bg-[#090D16] p-5 font-mono text-xs leading-relaxed text-cyan-100 focus:outline-none resize-none ${
+                  className={`select-text w-full flex-1 bg-[#090D16] p-5 font-mono text-xs leading-relaxed text-cyan-100 focus:outline-none resize-none ${
                     isCurrentAgentLocked ? "blur-md select-none opacity-30" : ""
                   }`}
                 />
@@ -974,7 +961,8 @@ ${buffers.frontend.replace(/</g, "&lt;").replace(/>/g, "&gt;")}
               <div className="flex-1 bg-[#090D16] relative">
                 <iframe
                   title="Live App Preview"
-                  srcDoc={getPreviewHtml()}
+                  srcDoc={previewHtml}
+                  sandbox="allow-scripts allow-modals"
                   className="w-full h-full border-0"
                 />
               </div>
@@ -1021,7 +1009,7 @@ ${buffers.frontend.replace(/</g, "&lt;").replace(/>/g, "&gt;")}
                   ? "Locked on Free Plan — Upgrade for $9 to customize this agent..."
                   : currentAgent.placeholder
               }
-              className="flex-1 bg-[#090D16] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-violet-500 disabled:opacity-50"
+              className="select-text flex-1 bg-[#090D16] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-violet-500 disabled:opacity-50"
             />
 
             <button
@@ -1031,6 +1019,11 @@ ${buffers.frontend.replace(/</g, "&lt;").replace(/>/g, "&gt;")}
             >
               <Send className="w-3.5 h-3.5" />
               {currentAgent.buttonLabel}
+              {!isCurrentAgentLocked && (
+                <span className="text-[10px] font-semibold opacity-80">
+                  ({CUSTOMIZE_COST} Token)
+                </span>
+              )}
             </button>
           </div>
         </footer>
@@ -1171,66 +1164,6 @@ ${buffers.frontend.replace(/</g, "&lt;").replace(/>/g, "&gt;")}
                 </button>
               </div>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* 5. MANDATORY TERMS & AI AGENT TRAINING CONSENT MODAL */}
-      {showTermsModal && (
-        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-[#0E1424] border border-slate-800 rounded-3xl max-w-lg w-full p-6 md:p-8 shadow-2xl">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
-              <ShieldCheck className="w-4 h-4" /> Legal & Data Usage Consent
-            </span>
-            <h3 className="text-xl font-extrabold text-white mt-1 mb-3">
-              Terms & Conditions Update
-            </h3>
-            <p className="text-xs text-slate-300 leading-relaxed mb-4">
-              Welcome to <strong>Build_Core</strong>. Before orchestrating projects with our 5 AI agents, please review and accept our Terms and Conditions:
-            </p>
-            <div className="bg-[#090D16] border border-slate-800 rounded-xl p-4 text-xs text-slate-300 space-y-2 max-h-48 overflow-y-auto mb-4">
-              <p>
-                • <strong>AI Agent Training License:</strong> By submitting prompts, specifications, or code inputs, you grant Build_Core a worldwide, royalty-free license to store, analyze, and use your prompts and generated outputs to train, fine-tune, and improve our AI agents and platform models.
-              </p>
-              <p>
-                • <strong>Code Ownership:</strong> You retain full ownership and commercial rights to the code and ZIP exports generated from your prompts.
-              </p>
-              <p>
-                • <strong>Confidentiality Caution:</strong> Do not enter production secret keys, passwords, or sensitive personal data into prompts.
-              </p>
-            </div>
-
-            <label className="flex items-start gap-2.5 text-xs text-slate-300 cursor-pointer select-none mb-5">
-              <input
-                type="checkbox"
-                checked={termsChecked}
-                onChange={(e) => setTermsChecked(e.target.checked)}
-                className="mt-0.5 h-4 w-4 rounded border-slate-700 bg-slate-900 text-amber-500 cursor-pointer accent-amber-400"
-              />
-              <span>
-                I have read and agree to the{" "}
-                <Link
-                  href="/terms"
-                  target="_blank"
-                  className="text-amber-400 underline hover:text-amber-300 font-semibold"
-                >
-                  Terms & Conditions
-                </Link>
-                , including the use of my prompt and generation data to train Build_Core AI agents.
-              </span>
-            </label>
-
-            <button
-              onClick={handleAcceptTermsModal}
-              disabled={!termsChecked}
-              className={`w-full py-3 rounded-xl font-bold text-xs uppercase tracking-wider transition ${
-                termsChecked
-                  ? "bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-500 text-white hover:brightness-110 shadow-lg shadow-violet-600/25 cursor-pointer"
-                  : "bg-slate-800 text-slate-500 cursor-not-allowed"
-              }`}
-            >
-              Accept & Continue to Studio
-            </button>
           </div>
         </div>
       )}

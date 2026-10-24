@@ -1,9 +1,16 @@
-import NextAuth from "next-auth";
+import NextAuth, { CredentialsSignin } from "next-auth";
 import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { db } from "@/lib/db";
 import bcrypt from "bcryptjs";
+
+const MIN_PASSWORD_LENGTH = 8;
+
+// Shown to the user on the landing page (see app/page.tsx -> AUTH_ERRORS).
+class PasswordTooShortError extends CredentialsSignin {
+  code = "password_too_short";
+}
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(db),
@@ -21,18 +28,26 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) {
-          throw new Error("Missing email or password");
-        }
+        const email =
+          typeof credentials?.email === "string"
+            ? credentials.email.trim().toLowerCase()
+            : "";
+        const password =
+          typeof credentials?.password === "string" ? credentials.password : "";
 
-        const email = credentials.email as string;
-        const password = credentials.password as string;
+        // Returning null => the client receives the generic "CredentialsSignin" error.
+        // (Throwing a plain Error here shows up in the browser as "Configuration".)
+        if (!email || !password) return null;
 
-        let user = await db.user.findUnique({ where: { email } });
+        const user = await db.user.findUnique({ where: { email } });
 
+        // Unknown email => create the account (sign-up).
         if (!user) {
+          if (password.length < MIN_PASSWORD_LENGTH) {
+            throw new PasswordTooShortError();
+          }
           const hashedPassword = await bcrypt.hash(password, 10);
-          user = await db.user.create({
+          const created = await db.user.create({
             data: {
               email,
               name: email.split("@")[0],
@@ -40,15 +55,31 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               termsAccepted: false,
             },
           });
-        } else if (user.password) {
-          const isValid = await bcrypt.compare(password, user.password);
-          if (!isValid) throw new Error("Invalid password");
+          return { id: created.id, name: created.name, email: created.email };
         }
+
+        // Account exists but has no password => it was created with Google.
+        // It must NOT be possible to log into it with an arbitrary password.
+        if (!user.password) return null;
+
+        const isValid = await bcrypt.compare(password, user.password);
+        if (!isValid) return null;
 
         return { id: user.id, name: user.name, email: user.email };
       },
     }),
   ],
+  callbacks: {
+    // With the JWT strategy Auth.js only exposes name/email/image on the session.
+    // Without this callback `session.user.id` is always undefined, which made
+    // /api/orchestrate and /api/history answer 401 for logged-in users.
+    async session({ session, token }) {
+      if (session.user && token?.sub) {
+        session.user.id = token.sub;
+      }
+      return session;
+    },
+  },
   pages: {
     signIn: "/",
   },

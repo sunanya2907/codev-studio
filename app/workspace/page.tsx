@@ -1,4 +1,4 @@
-import { auth } from "@/lib/auth";
+import { auth, signOut } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 
@@ -26,6 +26,21 @@ export default async function WorkspacePage() {
         >
           Launch Build_Core Editor →
         </Link>
+
+        <form
+          action={async () => {
+            "use server";
+            await signOut({ redirectTo: "/" });
+          }}
+          className="mt-5"
+        >
+          <button
+            type="submit"
+            className="text-xs text-neutral-400 hover:text-white underline underline-offset-4 transition"
+          >
+            Sign out
+          </button>
+        </form>
       </div>
     </main>
   );

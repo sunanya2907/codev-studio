@@ -1,33 +1,56 @@
 "use client";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { signIn } from "next-auth/react";
 import Link from "next/link";
-import { ShieldCheck, Mail, Lock } from "lucide-react";
+import { Mail, Lock } from "lucide-react";
+
+// Auth.js reports failures as short codes. Turn them into something a person can act on.
+const AUTH_ERRORS: Record<string, string> = {
+  CredentialsSignin:
+    "Incorrect email or password. If you signed up with Google, use the Google button instead.",
+  password_too_short:
+    "New accounts need a password of at least 8 characters.",
+  OAuthAccountNotLinked:
+    "This email is already registered with a different sign-in method. Please sign in the way you first signed up.",
+  AccessDenied: "Access denied.",
+  Configuration:
+    "Sign-in is temporarily unavailable because of a server configuration problem. Please try again later.",
+};
+
+const friendlyError = (code?: string | null) =>
+  (code && AUTH_ERRORS[code]) || "Sign-in failed. Please try again.";
 
 export default function LandingPage() {
   const [accepted, setAccepted] = useState(false);
-  const [isEmailMode, setIsEmailMode] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Google / redirect-based failures come back as /?error=<code>
+  useEffect(() => {
+    const code = new URLSearchParams(window.location.search).get("error");
+    if (code) setError(friendlyError(code));
+  }, []);
 
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!accepted) return;
     setLoading(true);
+    setError(null);
     try {
       const res = await signIn("credentials", {
-        email,
+        email: email.trim().toLowerCase(),
         password,
         redirect: false,
       });
       if (res?.error) {
-        alert(res.error);
+        setError(friendlyError(res.code ?? res.error));
       } else {
         window.location.href = "/workspace";
       }
-    } catch (err) {
-      alert("Authentication failed.");
+    } catch {
+      setError("Authentication failed. Please check your connection and try again.");
     } finally {
       setLoading(false);
     }
@@ -75,6 +98,15 @@ export default function LandingPage() {
               </span>
             </label>
           </div>
+
+          {error && (
+            <div
+              role="alert"
+              className="mb-4 rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2.5 text-left text-xs leading-relaxed text-rose-200"
+            >
+              {error}
+            </div>
+          )}
 
           {/* Google Login Button */}
           <button

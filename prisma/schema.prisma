@@ -24,7 +24,8 @@ model User {
   stripeCustomerId String?           @unique
   tier            Tier               @default(FREE)
   tokenBalance    Int                @default(3)
-  termsAccepted   Boolean            @default(true)
+  tokenPeriodStart DateTime          @default(now()) // start of the current monthly token period (see lib/tokens.ts)
+  termsAccepted   Boolean            @default(false)
   termsAcceptedAt DateTime           @default(now())
   projects        Project[]
   history         GenerationHistory[]

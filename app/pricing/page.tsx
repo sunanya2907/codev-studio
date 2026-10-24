@@ -79,7 +79,8 @@ export default function PricingPage() {
       if (res.ok) {
         window.location.href = "/orchestrate";
       } else {
-        alert("Failed to update plan.");
+        const data = await res.json().catch(() => null);
+        alert(data?.error || "Failed to update plan.");
       }
     } catch (err) {
       alert("Error updating plan.");
@@ -99,7 +100,8 @@ export default function PricingPage() {
       if (res.ok) {
         alert(`Successfully purchased ${count} extra tokens!`);
       } else {
-        alert("Failed to purchase tokens.");
+        const data = await res.json().catch(() => null);
+        alert(data?.error || "Failed to purchase tokens.");
       }
     } catch (err) {
       alert("Error purchasing tokens.");
@@ -218,7 +220,11 @@ export default function PricingPage() {
                 min={1}
                 max={500}
                 value={extraTokensCount}
-                onChange={(e) => setExtraTokensCount(Math.max(1, Number(e.target.value)))}
+                onChange={(e) =>
+                  setExtraTokensCount(
+                    Math.min(500, Math.max(1, Math.floor(Number(e.target.value)) || 1))
+                  )
+                }
                 className="w-12 bg-transparent text-center font-bold text-sm text-white focus:outline-none"
               />
               <span className="text-xs text-slate-400 ml-1">Tokens</span>
