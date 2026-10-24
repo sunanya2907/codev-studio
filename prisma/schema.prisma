@@ -94,7 +94,9 @@ model GenerationHistory {
   frontend  String   @db.Text
   backend   String   @db.Text
   database  String   @db.Text
+  qa        String   @db.Text @default("")
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  @@index([userId])
+  @@index([userId, createdAt])
 }

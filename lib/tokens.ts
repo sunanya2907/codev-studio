@@ -13,7 +13,7 @@ export function addOneMonth(from: Date): Date {
 export type BillingState = { tier: Tier; tokenBalance: number };
 
 /**
- * Applies the monthly refill if the user's current token period has ended, then
+ * Applies the monthly refill (paid plans only) if the user's token period has ended, then
  * returns their up-to-date plan + balance. Call it before reading or spending tokens.
  *
  * Refill rule: the balance is topped UP to the plan allowance, never down. Tokens
@@ -29,6 +29,12 @@ export async function getBillingState(userId: string): Promise<BillingState | nu
     select: { tier: true, tokenBalance: true, tokenPeriodStart: true },
   });
   if (!user) return null;
+
+  // The Free plan is a ONE-TIME trial: its tokens never refill. Once they are used
+  // up, the user must pay (upgrade) to keep building. Only paid plans refill monthly.
+  if (user.tier === "FREE") {
+    return { tier: user.tier, tokenBalance: user.tokenBalance };
+  }
 
   const now = new Date();
   if (now < addOneMonth(user.tokenPeriodStart)) {

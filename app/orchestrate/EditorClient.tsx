@@ -40,6 +40,7 @@ interface HistoryItem {
   frontend: string;
   backend: string;
   database: string;
+  qa?: string;
   createdAt: string;
 }
 
@@ -135,10 +136,10 @@ const PLAN_DETAILS = [
     price: "$0",
     period: "/ month",
     tokens: 3,
-    badge: "3 Monthly Trials",
+    badge: "3 Free Trial Builds",
     desc: "Only Agent 1 (Architect Spec) is visible.",
     features: [
-      "3 Monthly Trial Builds",
+      "3 Free Trial Builds (one-time)",
       "Agent 1: Architect Spec Visible",
       "Locked: Agents 2, 3, 4 & 5",
     ],
@@ -244,12 +245,29 @@ export default function EditorClient({
   });
 
   const [historyList, setHistoryList] = useState<HistoryItem[]>([]);
+  // The saved generation currently open in the editor; edits are saved back to it.
+  const [currentHistoryId, setCurrentHistoryId] = useState<string | null>(null);
+
+  const openHistoryItem = (item: HistoryItem) => {
+    setPrompt(item.prompt);
+    setCurrentHistoryId(item.id);
+    setBuffers((prev) => ({
+      ...prev,
+      spec: item.spec,
+      frontend: item.frontend,
+      backend: item.backend,
+      database: item.database,
+      qa:
+        item.qa ||
+        "# Agent 5 QA Report\n\nNo QA report was saved for this generation.",
+    }));
+  };
 
   const maxTokensForPlan = TIER_TOKENS[tier];
 
   useEffect(() => {
     fetchBillingStatus();
-    fetchHistory();
+    fetchHistory(true); // true => reopen the most recent project after a refresh
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -266,13 +284,16 @@ export default function EditorClient({
     } catch (e) {}
   };
 
-  const fetchHistory = async () => {
+  const fetchHistory = async (restoreLatest = false) => {
     try {
       const res = await fetch("/api/history");
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data.history)) {
           setHistoryList(data.history);
+          if (restoreLatest && data.history.length > 0) {
+            openHistoryItem(data.history[0]);
+          }
         }
       }
     } catch (e) {}
@@ -368,6 +389,10 @@ export default function EditorClient({
           `# Agent 5 QA Report\n- [x] Verified Spec & API routes for: "${prompt.slice(0, 40)}..."\n- [x] Production build checks passed.`,
       });
 
+      if (typeof data.historyId === "string") {
+        setCurrentHistoryId(data.historyId);
+      }
+
       if (typeof data.tokenBalance === "number") {
         setTokenBalance(data.tokenBalance);
       } else {
@@ -416,6 +441,7 @@ export default function EditorClient({
           agent: currentAgent.key,
           currentCode: buffers[key],
           instruction: customInstruction,
+          historyId: currentHistoryId,
         }),
       });
 
@@ -587,7 +613,7 @@ export default function EditorClient({
 
               <p className="text-[11px] text-slate-400 mb-2.5">
                 {tier === "FREE"
-                  ? "3 monthly trials • Agent 1 only"
+                  ? "3 free trial builds • Agent 1 only"
                   : "All 5 AI Agents Unlocked"}
               </p>
 
@@ -647,15 +673,7 @@ export default function EditorClient({
                 <div
                   key={item.id}
                   onClick={() => {
-                    setPrompt(item.prompt);
-                    setBuffers((prev) => ({
-                      ...prev,
-                      spec: item.spec,
-                      frontend: item.frontend,
-                      backend: item.backend,
-                      database: item.database,
-                      qa: "# Agent 5 QA Report\n\nQA reports are not saved in history. Run a new build to generate one.",
-                    }));
+                    openHistoryItem(item);
                     setShowHistoryDrawer(false);
                   }}
                   className="p-3 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-800 hover:border-violet-500/50 cursor-pointer transition"
@@ -935,7 +953,7 @@ export default function EditorClient({
                       Unlock {currentAgent.name} ({currentAgent.role})
                     </h4>
                     <p className="text-xs text-slate-300 max-w-md mb-6 leading-relaxed">
-                      Your Free Plan includes <strong>3 monthly trials</strong> with access to <strong>Agent 1 (Architect Spec)</strong>. Upgrade to <strong>Standard ($9 / 10 Tokens)</strong>, <strong>Pro ($49 / 50 Tokens)</strong>, or <strong>Exclusive</strong> to unlock all 5 full-stack agents!
+                      Your Free Plan includes <strong>3 one-time trial builds</strong> with access to <strong>Agent 1 (Architect Spec)</strong>. Once they are used, everything stays locked until you upgrade. Upgrade to <strong>Standard ($9 / 10 Tokens)</strong>, <strong>Pro ($49 / 50 Tokens)</strong>, or <strong>Exclusive</strong> to unlock all 5 full-stack agents!
                     </p>
                     <div className="flex flex-wrap items-center justify-center gap-3">
                       <button

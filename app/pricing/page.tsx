@@ -10,10 +10,10 @@ const PLAN_DETAILS = [
     name: "Free Plan",
     price: "$0",
     period: "/ month",
-    badge: "3 Monthly Trials",
+    badge: "3 Free Trial Builds",
     desc: "Only Agent 1 (Architect Spec) is visible.",
     features: [
-      "3 Monthly Trial Builds",
+      "3 Free Trial Builds (one-time)",
       "Agent 1: Architect Spec Visible",
       "Locked: Agents 2, 3, 4 & 5",
     ],
