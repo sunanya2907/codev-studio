@@ -26,9 +26,18 @@ export type BillingState = { tier: Tier; tokenBalance: number };
 export async function getBillingState(userId: string): Promise<BillingState | null> {
   const user = await db.user.findUnique({
     where: { id: userId },
-    select: { tier: true, tokenBalance: true, tokenPeriodStart: true },
+    select: { tier: true, tokenBalance: true, tokenPeriodStart: true, planExpiresAt: true },
   });
   if (!user) return null;
+
+  // Prepaid (Razorpay) plan ran out => back to Free. Bought/remaining tokens are kept.
+  if (user.tier !== "FREE" && user.planExpiresAt && new Date() > user.planExpiresAt) {
+    await db.user.updateMany({
+      where: { id: userId, planExpiresAt: user.planExpiresAt },
+      data: { tier: "FREE", planExpiresAt: null },
+    });
+    return { tier: "FREE", tokenBalance: user.tokenBalance };
+  }
 
   // The Free plan is a ONE-TIME trial: its tokens never refill. Once they are used
   // up, the user must pay (upgrade) to keep building. Only paid plans refill monthly.

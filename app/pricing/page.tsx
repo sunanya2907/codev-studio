@@ -3,6 +3,9 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { Check, Coins, Crown, Plus, X } from "lucide-react";
+import { startCheckout, contactForExclusive } from "@/lib/billing-client";
+import PaymentMethodToggle from "@/components/PaymentMethodToggle";
+import type { PaymentProvider } from "@/lib/plans";
 
 const PLAN_DETAILS = [
   {
@@ -11,11 +14,11 @@ const PLAN_DETAILS = [
     price: "$0",
     period: "/ month",
     badge: "3 Free Trial Builds",
-    desc: "Only Agent 1 (Architect Spec) is visible.",
+    desc: "Build and run your app in Live Preview. Code is locked.",
     features: [
       "3 Free Trial Builds (one-time)",
-      "Agent 1: Architect Spec Visible",
-      "Locked: Agents 2, 3, 4 & 5",
+      "Live Preview of your app",
+      "Locked: code view, copy, edit & export",
     ],
   },
   {
@@ -25,11 +28,11 @@ const PLAN_DETAILS = [
     period: "/ month",
     badge: "10 Tokens Included",
     tag: "Best Value",
-    desc: "Unlocks all 5 AI agents + Live Preview & ZIP Export.",
+    desc: "Unlocks all 5 AI agents, full code access & ZIP Export.",
     features: [
       "10 Monthly Generation Tokens",
       "All 5 Full-Stack Agents Unlocked",
-      "Live Preview & ZIP Export",
+      "Full code access & ZIP Export",
       "$1 Extra Token Top-Ups Anytime",
     ],
   },
@@ -67,47 +70,36 @@ const PLAN_DETAILS = [
 export default function PricingPage() {
   const [extraTokensCount, setExtraTokensCount] = useState<number>(5);
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
+  const [provider, setProvider] = useState<PaymentProvider>("razorpay");
 
   const handleSelectPlan = async (planId: string) => {
-    setLoadingPlan(planId);
-    try {
-      const res = await fetch("/api/billing", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "UPGRADE_PLAN", plan: planId }),
-      });
-      if (res.ok) {
-        window.location.href = "/orchestrate";
-      } else {
-        const data = await res.json().catch(() => null);
-        alert(data?.error || "Failed to update plan.");
-      }
-    } catch (err) {
-      alert("Error updating plan.");
-    } finally {
-      setLoadingPlan(null);
+    if (planId === "FREE") {
+      window.location.href = "/orchestrate";
+      return;
     }
+    if (planId === "EXCLUSIVE") {
+      contactForExclusive();
+      return;
+    }
+    setLoadingPlan(planId);
+    const result = await startCheckout({ action: "PLAN", plan: planId }, provider);
+    if (result.kind === "demo" || result.kind === "switched") {
+      window.location.href = "/orchestrate?checkout=success";
+      return;
+    }
+    if (result.kind === "error") alert(result.error);
+    if (result.kind !== "redirect") setLoadingPlan(null);
   };
 
   const handleBuyTokens = async (count: number) => {
     setLoadingPlan("TOPUP");
-    try {
-      const res = await fetch("/api/billing", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "BUY_TOKENS", extraTokens: count }),
-      });
-      if (res.ok) {
-        alert(`Successfully purchased ${count} extra tokens!`);
-      } else {
-        const data = await res.json().catch(() => null);
-        alert(data?.error || "Failed to purchase tokens.");
-      }
-    } catch (err) {
-      alert("Error purchasing tokens.");
-    } finally {
-      setLoadingPlan(null);
+    const result = await startCheckout({ action: "TOKENS", tokens: count }, provider);
+    if (result.kind === "demo") {
+      alert(`Successfully added ${count} extra tokens!`);
+    } else if (result.kind === "error") {
+      alert(result.error);
     }
+    if (result.kind !== "redirect") setLoadingPlan(null);
   };
 
   return (
@@ -132,6 +124,8 @@ export default function PricingPage() {
             <X className="w-5 h-5" />
           </Link>
         </div>
+
+        <PaymentMethodToggle value={provider} onChange={setProvider} />
 
         {/* 4 Plans Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">

@@ -5,9 +5,18 @@ import Link from "next/link";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
 import { buildPreviewHtml } from "@/lib/preview";
+import { parseFiles, cleanPath } from "@/lib/files";
+import { scaffoldFiles } from "@/lib/scaffold";
 import { TIER_TOKENS, CUSTOMIZE_COST } from "@/lib/plans";
+import { startCheckout, contactForExclusive } from "@/lib/billing-client";
+import PaymentMethodToggle from "@/components/PaymentMethodToggle";
+import BuildProgress from "@/components/BuildProgress";
+import VoiceBuilder from "@/components/VoiceBuilder";
+import DomainSearch from "@/components/DomainSearch";
+import type { PaymentProvider } from "@/lib/plans";
 import {
   Menu,
+  Mic,
   Sparkles,
   History,
   Coins,
@@ -31,6 +40,7 @@ import {
   X,
   Crown,
   FileText,
+  Globe,
 } from "lucide-react";
 
 interface HistoryItem {
@@ -44,17 +54,20 @@ interface HistoryItem {
   createdAt: string;
 }
 
+// What a free user sees instead of code. The real code never reaches the editor box.
+const LOCKED_TEXT = "// Locked on Free Plan.\n// Your Live Preview works. Upgrade to view, copy, edit and export the code.";
+
 const AGENTS = [
   {
     id: 1,
     key: "spec",
     name: "Agent 1",
-    role: "Architect Spec",
+    role: "SRS Document",
     badgeColor: "from-violet-600 to-indigo-600",
     icon: Layers,
-    placeholder: "Ask Agent 1 to modify architecture spec...",
-    buttonLabel: "Customize Spec",
-    freeAccessible: true,
+    placeholder: "Ask Agent 1 to change the SRS (requirements, data model, API)...",
+    buttonLabel: "Customize SRS",
+    freeAccessible: false,
   },
   {
     id: 2,
@@ -63,7 +76,7 @@ const AGENTS = [
     role: "Frontend UI",
     badgeColor: "from-blue-600 to-cyan-500",
     icon: Layout,
-    placeholder: "Ask Agent 2 to customize UI components...",
+    placeholder: "Ask Agent 2 to change pages or components...",
     buttonLabel: "Customize UI",
     freeAccessible: false,
   },
@@ -74,7 +87,7 @@ const AGENTS = [
     role: "Backend API",
     badgeColor: "from-emerald-600 to-teal-500",
     icon: Server,
-    placeholder: "Ask Agent 3 to modify API routes...",
+    placeholder: "Ask Agent 3 to change or add API routes...",
     buttonLabel: "Customize API",
     freeAccessible: false,
   },
@@ -137,11 +150,11 @@ const PLAN_DETAILS = [
     period: "/ month",
     tokens: 3,
     badge: "3 Free Trial Builds",
-    desc: "Only Agent 1 (Architect Spec) is visible.",
+    desc: "Build and run your app in Live Preview. Code is locked.",
     features: [
       "3 Free Trial Builds (one-time)",
-      "Agent 1: Architect Spec Visible",
-      "Locked: Agents 2, 3, 4 & 5",
+      "Live Preview of your app",
+      "Locked: code view, copy, edit & export",
     ],
   },
   {
@@ -151,11 +164,11 @@ const PLAN_DETAILS = [
     period: "/ month",
     tokens: 10,
     badge: "10 Tokens Included",
-    desc: "Unlocks all 5 AI agents + Live Preview & ZIP Export.",
+    desc: "Unlocks all 5 AI agents, full code access & ZIP Export.",
     features: [
       "10 Monthly Generation Tokens",
       "All 5 Full-Stack Agents Unlocked",
-      "Live Preview & ZIP Export",
+      "Full code access & ZIP Export",
       "$1 Extra Token Top-Ups Anytime",
     ],
   },
@@ -215,6 +228,7 @@ export default function EditorClient({
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
   const [showPricingModal, setShowPricingModal] = useState(false);
+  const [showDomainModal, setShowDomainModal] = useState(false);
   const [activeTab, setActiveTab] = useState<"editor" | "preview">("editor");
   const [activeAgentIndex, setActiveAgentIndex] = useState<number>(0);
 
@@ -223,11 +237,14 @@ export default function EditorClient({
   const [tokenBalance, setTokenBalance] = useState<number>(3);
   const [extraTokensCount, setExtraTokensCount] = useState<number>(5);
   const [billingLoading, setBillingLoading] = useState<string | null>(null);
+  const [provider, setProvider] = useState<PaymentProvider>("razorpay");
 
   // Prompt & Agent Buffers
   const [prompt, setPrompt] = useState("");
+  const [showVoice, setShowVoice] = useState(false);
   const [customInstruction, setCustomInstruction] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isBuilding, setIsBuilding] = useState(false); // full build only (shows the progress screen)
   const [copied, setCopied] = useState(false);
 
   const [buffers, setBuffers] = useState<{
@@ -237,7 +254,7 @@ export default function EditorClient({
     database: string;
     qa: string;
   }>({
-    spec: `# Architecture Specification\n## Project: Ready to Orchestrate\n\n### Tech Stack\n- Frontend: Next.js 15 + Tailwind CSS\n- Backend: Next.js App Router API\n- Database: PostgreSQL + Prisma ORM\n- Auth: NextAuth.js\n\nDescribe your website idea on the left and click "Build App (1 Token)" to orchestrate your project.`,
+    spec: `# Software Requirements Specification\n## Project: Ready to Orchestrate\n\n### Tech Stack\n- Frontend: Next.js 15 + Tailwind CSS\n- Backend: Next.js App Router API\n- Database: PostgreSQL + Prisma ORM\n- Auth: NextAuth.js\n\nDescribe your website idea on the left and click "Build App (1 Token)" to orchestrate your project.`,
     frontend: `export default function GeneratedApp() {\n  return (\n    <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-8">\n      <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl text-center">\n        <span className="px-3 py-1 text-xs font-semibold bg-violet-500/20 text-violet-300 rounded-full">Live Preview Ready</span>\n        <h1 className="text-2xl font-bold mt-4">Build_Core Dynamic App</h1>\n        <p className="text-slate-400 text-sm mt-2">Enter an app idea on the left and click Build to render your live interactive UI here.</p>\n      </div>\n    </div>\n  );\n}`,
     backend: `import { NextResponse } from "next/server";\n\nexport async function GET() {\n  return NextResponse.json({ status: "ok", message: "Agent 3 Backend API Ready" });\n}`,
     database: `model Item {\n  id        String   @id @default(cuid())\n  title     String\n  completed Boolean  @default(false)\n  createdAt DateTime @default(now())\n}`,
@@ -266,6 +283,19 @@ export default function EditorClient({
   const maxTokensForPlan = TIER_TOKENS[tier];
 
   useEffect(() => {
+    // Back from Stripe Checkout: the webhook may take a few seconds to credit the account.
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("checkout") === "success") {
+      window.history.replaceState(null, "", window.location.pathname);
+      fetch("/api/billing")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((before) => {
+          if (before) pollBillingUntilChanged(before);
+        })
+        .catch(() => {});
+    } else if (params.get("checkout")) {
+      window.history.replaceState(null, "", window.location.pathname);
+    }
     fetchBillingStatus();
     fetchHistory(true); // true => reopen the most recent project after a refresh
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -302,54 +332,69 @@ export default function EditorClient({
   const currentAgent = AGENTS[activeAgentIndex];
   const isCurrentAgentLocked = tier === "FREE" && !currentAgent.freeAccessible;
 
-  // Upgrade Plan Handler (Free / Standard $9 / Pro $49 / Exclusive)
-  const handleSelectPlan = async (selectedPlan: string) => {
-    setBillingLoading(selectedPlan);
-    try {
-      const res = await fetch("/api/billing", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "UPGRADE_PLAN", plan: selectedPlan }),
-      });
-      const data = await readJson(res);
-      if (res.ok) {
-        setTier(data.tier);
-        setTokenBalance(data.tokenBalance);
-        setShowPricingModal(false);
-      } else {
-        alert(data.error || "Failed to update plan.");
-      }
-    } catch (err) {
-      alert("Error updating plan.");
-    } finally {
-      setBillingLoading(null);
+  // Waits for Stripe's webhook to credit the plan/tokens (usually 1-5 seconds).
+  const pollBillingUntilChanged = async (before: { tier: string; tokenBalance: number }) => {
+    for (let i = 0; i < 12; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      try {
+        const res = await fetch("/api/billing");
+        if (!res.ok) continue;
+        const d = await res.json();
+        if (d.tier !== before.tier || d.tokenBalance !== before.tokenBalance) {
+          setTier(d.tier);
+          setTokenBalance(d.tokenBalance);
+          return;
+        }
+      } catch {}
     }
   };
 
-  // Buy Extra Tokens ($1 per token)
+  // Upgrade Plan Handler (Standard $9 / Pro $49 via Stripe; Exclusive = contact us)
+  const handleSelectPlan = async (selectedPlan: string) => {
+    if (selectedPlan === "FREE") {
+      setShowPricingModal(false);
+      return;
+    }
+    if (selectedPlan === "EXCLUSIVE") {
+      contactForExclusive();
+      return;
+    }
+    setBillingLoading(selectedPlan);
+    const before = { tier, tokenBalance };
+    const result = await startCheckout({ action: "PLAN", plan: selectedPlan }, provider);
+    if (result.kind === "demo") {
+      setTier(result.tier as typeof tier);
+      setTokenBalance(result.tokenBalance);
+      setShowPricingModal(false);
+    } else if (result.kind === "switched") {
+      setShowPricingModal(false);
+      await pollBillingUntilChanged(before);
+    } else if (result.kind === "error") {
+      alert(result.error);
+    }
+    // "redirect": the browser is already on its way to Stripe.
+    setBillingLoading(null);
+  };
+
+  // Buy Extra Tokens ($1 per token, paid through Stripe Checkout)
   const handleBuyExtraTokens = async (countToBuy: number) => {
     setBillingLoading("TOPUP");
-    try {
-      const res = await fetch("/api/billing", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "BUY_TOKENS",
-          extraTokens: countToBuy,
-        }),
-      });
-      const data = await readJson(res);
-      if (res.ok) {
-        setTokenBalance(data.tokenBalance);
-        setShowPricingModal(false);
-      } else {
-        alert(data.error || "Failed to purchase tokens.");
-      }
-    } catch (err) {
-      alert("Error purchasing extra tokens.");
-    } finally {
-      setBillingLoading(null);
+    const result = await startCheckout({ action: "TOKENS", tokens: countToBuy }, provider);
+    if (result.kind === "demo") {
+      setTokenBalance(result.tokenBalance);
+      setShowPricingModal(false);
+    } else if (result.kind === "error") {
+      alert(result.error);
     }
+    setBillingLoading(null);
+  };
+
+  // Paid users: Stripe's customer portal (cancel, invoices, card).
+  const handleManageSubscription = async () => {
+    setBillingLoading("PORTAL");
+    const result = await startCheckout({ action: "PORTAL" });
+    if (result.kind === "error") alert(result.error);
+    setBillingLoading(null);
   };
 
   // Full App Build Handler (Enforces Token Deduction & Free Plan Visibility)
@@ -362,6 +407,7 @@ export default function EditorClient({
     }
 
     setIsGenerating(true);
+    setIsBuilding(true);
 
     try {
       const res = await fetch("/api/orchestrate", {
@@ -403,9 +449,10 @@ export default function EditorClient({
         setTier(data.tier);
       }
 
-      // If on Free plan, keep focus on Agent 1 (Architect Spec)
+      // Free plan: show the running app; the code stays locked
       if ((data.tier || tier) === "FREE") {
         setActiveAgentIndex(0);
+        setActiveTab("preview");
       }
 
       fetchHistory();
@@ -413,6 +460,7 @@ export default function EditorClient({
       alert(err.message || "Error during generation");
     } finally {
       setIsGenerating(false);
+      setIsBuilding(false);
     }
   };
 
@@ -478,11 +526,25 @@ export default function EditorClient({
       return;
     }
     const zip = new JSZip();
-    zip.file("README.md", buffers.spec);
-    zip.file("app/page.tsx", buffers.frontend);
-    zip.file("app/api/route.ts", buffers.backend);
-    zip.file("prisma/schema.prisma", buffers.database);
+    const appName =
+      (buffers.spec.match(/^#\s+(?:Software Requirements Specification:?\s*)?(.+)$/m)?.[1] || "").trim() ||
+      "My App";
+
+    // 1) fixed project files, so the ZIP can be run with npm install && npm run dev
+    for (const f of scaffoldFiles(appName)) zip.file(f.path, f.content);
+    // 2) documents
+    zip.file("SRS.md", buffers.spec);
     zip.file("QA_REPORT.md", buffers.qa);
+    // 3) generated code (written last, so it can override a scaffold file if it must)
+    for (const f of parseFiles(buffers.frontend, "app/page.tsx")) {
+      const path = cleanPath(f.path);
+      if (path) zip.file(path, f.content);
+    }
+    for (const f of parseFiles(buffers.backend, "app/api/route.ts")) {
+      const path = cleanPath(f.path);
+      if (path) zip.file(path, f.content);
+    }
+    zip.file("prisma/schema.prisma", buffers.database);
     const content = await zip.generateAsync({ type: "blob" });
     saveAs(content, "build-core-app.zip");
   };
@@ -582,6 +644,14 @@ export default function EditorClient({
               {sidebarOpen && <span>Plans & $1 Tokens</span>}
             </button>
 
+            <button
+              onClick={() => setShowDomainModal(true)}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold text-cyan-300 hover:text-white hover:bg-cyan-500/10 border border-transparent hover:border-cyan-500/30 transition"
+            >
+              <Globe className="w-4 h-4 text-cyan-300 shrink-0" />
+              {sidebarOpen && <span>Find a Domain</span>}
+            </button>
+
             <Link
               href="/terms"
               target="_blank"
@@ -613,7 +683,7 @@ export default function EditorClient({
 
               <p className="text-[11px] text-slate-400 mb-2.5">
                 {tier === "FREE"
-                  ? "3 free trial builds • Agent 1 only"
+                  ? "3 free trial builds • Live Preview only"
                   : "All 5 AI Agents Unlocked"}
               </p>
 
@@ -712,6 +782,13 @@ export default function EditorClient({
                 {prompt.length}/500
               </span>
             </div>
+            <button
+              type="button"
+              onClick={() => setShowVoice(true)}
+              className="mb-2 w-full py-2 rounded-xl text-[11px] font-bold text-cyan-300 bg-cyan-500/10 border border-cyan-500/30 hover:bg-cyan-500/20 transition flex items-center justify-center gap-1.5"
+            >
+              <Mic className="w-3.5 h-3.5" /> Talk to build · $0.25/min (1 token = 4 min)
+            </button>
             <textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
@@ -839,13 +916,7 @@ export default function EditorClient({
             </button>
 
             <button
-              onClick={() => {
-                if (tier === "FREE") {
-                  setShowPricingModal(true);
-                  return;
-                }
-                setActiveTab("preview");
-              }}
+              onClick={() => setActiveTab("preview")}
               className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition ${
                 activeTab === "preview"
                   ? "bg-gradient-to-r from-blue-600 to-cyan-500 text-white shadow"
@@ -854,7 +925,6 @@ export default function EditorClient({
             >
               <Eye className="w-3.5 h-3.5" />
               Live Preview
-              {tier === "FREE" && <Lock className="w-3 h-3 text-amber-400" />}
             </button>
           </div>
 
@@ -925,10 +995,12 @@ export default function EditorClient({
               </div>
             </div>
 
+            {isBuilding && <BuildProgress free={tier === "FREE"} />}
+
             {activeTab === "editor" ? (
               <div className="flex-1 relative flex flex-col">
                 <textarea
-                  value={currentCodeValue}
+                  value={isCurrentAgentLocked ? LOCKED_TEXT : currentCodeValue}
                   onChange={(e) => {
                     if (isCurrentAgentLocked) return;
                     const key = currentAgent.key as keyof typeof buffers;
@@ -947,13 +1019,13 @@ export default function EditorClient({
                       <Lock className="w-7 h-7" />
                     </div>
                     <span className="px-3 py-1 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[11px] font-bold uppercase tracking-wider mb-2">
-                      Free Plan — Architect Spec Only
+                      Free Plan — Live Preview Only
                     </span>
                     <h4 className="text-xl font-extrabold text-white mb-2">
-                      Unlock {currentAgent.name} ({currentAgent.role})
+                      Unlock the code: {currentAgent.name} ({currentAgent.role})
                     </h4>
                     <p className="text-xs text-slate-300 max-w-md mb-6 leading-relaxed">
-                      Your Free Plan includes <strong>3 one-time trial builds</strong> with access to <strong>Agent 1 (Architect Spec)</strong>. Once they are used, everything stays locked until you upgrade. Upgrade to <strong>Standard ($9 / 10 Tokens)</strong>, <strong>Pro ($49 / 50 Tokens)</strong>, or <strong>Exclusive</strong> to unlock all 5 full-stack agents!
+                      Your Free Plan includes <strong>3 one-time trial builds</strong> where you can run your app in the <strong>Live Preview</strong>. Viewing, copying, editing and exporting the code needs a paid plan. Upgrade to <strong>Standard ($9 / 10 Tokens)</strong>, <strong>Pro ($49 / 50 Tokens)</strong>, or <strong>Exclusive</strong> to unlock all 5 agents and the full code!
                     </p>
                     <div className="flex flex-wrap items-center justify-center gap-3">
                       <button
@@ -1024,7 +1096,7 @@ export default function EditorClient({
               disabled={isCurrentAgentLocked || isGenerating}
               placeholder={
                 isCurrentAgentLocked
-                  ? "Locked on Free Plan — Upgrade for $9 to customize this agent..."
+                  ? "Code is locked on the Free Plan — upgrade for $9 to edit..."
                   : currentAgent.placeholder
               }
               className="select-text flex-1 bg-[#090D16] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-violet-500 disabled:opacity-50"
@@ -1047,7 +1119,20 @@ export default function EditorClient({
         </footer>
       </main>
 
+      <VoiceBuilder
+        open={showVoice}
+        onClose={() => setShowVoice(false)}
+        onApply={(text) => setPrompt(text.slice(0, 500))}
+        onBalanceChange={(n) => setTokenBalance(n)}
+        onNeedTokens={() => {
+          setShowVoice(false);
+          setShowPricingModal(true);
+        }}
+      />
+
       {/* 4. FULL INTERACTIVE PRICING & $1 EXTRA TOKEN MODAL */}
+      {showDomainModal && <DomainSearch onClose={() => setShowDomainModal(false)} />}
+
       {showPricingModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-[#0E1424] border border-slate-800 rounded-3xl max-w-5xl w-full p-6 md:p-8 shadow-2xl relative my-auto">
@@ -1060,6 +1145,15 @@ export default function EditorClient({
                   Unlock All 5 AI Agents or Top Up Extra Tokens ($1)
                 </h3>
               </div>
+              {tier !== "FREE" && (
+                <button
+                  onClick={handleManageSubscription}
+                  disabled={billingLoading === "PORTAL"}
+                  className="mr-3 px-3 py-2 rounded-xl text-xs font-bold bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 disabled:opacity-50"
+                >
+                  {billingLoading === "PORTAL" ? "Opening..." : "Manage subscription"}
+                </button>
+              )}
               <button
                 onClick={() => setShowPricingModal(false)}
                 className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800"
@@ -1067,6 +1161,8 @@ export default function EditorClient({
                 <X className="w-5 h-5" />
               </button>
             </div>
+
+            <PaymentMethodToggle value={provider} onChange={setProvider} />
 
             {/* 4 Plans Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">

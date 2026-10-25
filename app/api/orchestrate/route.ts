@@ -1,21 +1,31 @@
 import { NextResponse } from "next/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { BUILD_COST, CUSTOMIZE_COST } from "@/lib/plans";
 import { getBillingState, reserveTokens, refundTokens } from "@/lib/tokens";
+import { normalizeFiles } from "@/lib/files";
+import { AiNotConfiguredError, AiUnavailableError, aiConfigured, generateText } from "@/lib/ai";
+import {
+  srsPrompt,
+  frontendPrompt,
+  backendPrompt,
+  databasePrompt,
+  qaPrompt,
+  customizeHint,
+} from "@/lib/agents";
 
-// A full build makes 5 Gemini calls (1, then 4 in parallel). That easily exceeds
+// A full build makes several AI calls (1, then 4 in parallel). That easily exceeds
 // the default serverless timeout on Vercel and shows up as a 504 / "Unexpected token '<'".
-export const maxDuration = 60;
+// The build is now 3 steps (SRS -> frontend/backend/database in parallel -> QA review) and
+// the output is much bigger. If Vercel rejects 300 on your plan, lower this to 60.
+export const maxDuration = 300;
 
-// Google retires Gemini model names regularly (2.5-flash is closed to new users).
-// Override without a code change by setting GEMINI_MODEL in Vercel / .env.
-const GEMINI_MODEL = process.env.GEMINI_MODEL?.trim() || "gemini-3.8-flash";
+// AI providers (Gemini, Claude, GPT, DeepSeek) and their fail-over order live in lib/ai.ts.
+// Model names are env-configurable there (GEMINI_MODEL, ANTHROPIC_MODEL, ...).
 
 const MAX_PROMPT_LENGTH = 500; // matches the "x/500" counter in the editor
 const MAX_INSTRUCTION_LENGTH = 1000;
-const MAX_CODE_LENGTH = 60000;
+const MAX_CODE_LENGTH = 150000; // multi-file modules are bigger than the old single files
 
 const AGENT_KEYS = ["spec", "frontend", "backend", "database", "qa"] as const;
 type AgentKey = (typeof AGENT_KEYS)[number];
@@ -44,10 +54,9 @@ export async function POST(req: Request) {
     const instruction =
       typeof body.instruction === "string" ? body.instruction.trim() : "";
 
-    const apiKey = process.env.GEMINI_API_KEY?.trim();
-    if (!apiKey) {
+    if (!aiConfigured()) {
       return NextResponse.json(
-        { error: "GEMINI_API_KEY is missing." },
+        { error: new AiNotConfiguredError().message },
         { status: 500 }
       );
     }
@@ -68,13 +77,15 @@ export async function POST(req: Request) {
         { status: 402 }
       );
 
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
+    // Stop starting new provider attempts shortly before Vercel kills the function.
+    const deadline = Date.now() + (maxDuration - 15) * 1000;
+    const providersUsed: string[] = [];
 
-    const callGemini = async (systemPrompt: string) => {
-      const result = await model.generateContent(systemPrompt);
-      let text = result.response.text()?.trim();
-      if (!text) throw new Error("Gemini returned an empty response.");
+    const callAI = async (systemPrompt: string) => {
+      // Tries Gemini first, then Claude / GPT / DeepSeek if it is down (see lib/ai.ts).
+      const result = await generateText(systemPrompt, { deadline });
+      if (!providersUsed.includes(result.provider)) providersUsed.push(result.provider);
+      let text = result.text.trim();
 
       // Models often wrap the whole answer in ONE ```lang fence. Remove only that
       // outer wrapper. (The old code stripped every fence, which destroyed the code
@@ -104,26 +115,28 @@ export async function POST(req: Request) {
         );
       }
 
-      // Free users may only customize Agent 1 (spec)
-      if (user.tier === "FREE" && agent !== "spec") {
+      // Free users can only preview; code (and editing it) is a paid feature
+      if (user.tier === "FREE") {
         return NextResponse.json(
           {
             error:
-              "Free Plan only allows Agent 1 (Architect Spec). Upgrade to Standard ($9) to unlock all agents!",
+              "Free Plan only includes the Live Preview. Upgrade to Standard ($9) to view, edit and export the code!",
             code: "PLAN_LOCKED",
           },
           { status: 403 }
         );
       }
 
-      // Customizing is a paid Gemini call, so it costs tokens just like a build.
-      // Reserve first (atomic), refund if Gemini fails.
+      // Customizing is a paid AI call, so it costs tokens just like a build.
+      // Reserve first (atomic), refund if every AI provider fails.
       const balanceAfterReserve = await reserveTokens(session.user.id, CUSTOMIZE_COST);
       if (balanceAfterReserve === null) return outOfTokens(CUSTOMIZE_COST);
 
       try {
-        const customPrompt = `You are a senior full-stack AI agent updating the "${agent}" module.\nCurrent Code/Spec:\n${currentCode}\n\nUser Instruction: ${instruction}\n\nReturn ONLY the updated code or markdown without explanations.`;
-        const updatedCode = await callGemini(customPrompt);
+        const customPrompt = `You are a senior full-stack AI agent updating the "${agent}" module.\n${customizeHint(agent)}\n\nCurrent Code/Spec:\n${currentCode}\n\nUser Instruction: ${instruction}\n\nReturn ONLY the updated code or markdown without explanations.`;
+        let updatedCode = await callAI(customPrompt);
+        if (agent === "frontend") updatedCode = normalizeFiles(updatedCode, "app/page.tsx");
+        if (agent === "backend") updatedCode = normalizeFiles(updatedCode, "app/api/route.ts");
 
         // Persist the edit so it survives a refresh / closing the tab.
         if (historyId) {
@@ -139,6 +152,7 @@ export async function POST(req: Request) {
           updatedCode,
           tier: user.tier,
           tokenBalance: balanceAfterReserve,
+          aiProviders: providersUsed,
         });
       } catch (genError) {
         await refundTokens(session.user.id, CUSTOMIZE_COST);
@@ -166,36 +180,31 @@ export async function POST(req: Request) {
     if (balanceAfterReserve === null) return outOfTokens(BUILD_COST);
 
     try {
-      // Agent 1 (Architect Spec) runs on every plan
-      const spec = await callGemini(
-        `Act as Agent 1 (System Architect). Create a clean, structured Markdown Architecture Specification (Tech stack, core features, API endpoints, database models) for this web app idea:\n"${prompt}"`
-      );
+      // Agent 1 writes the SRS, whose data model / API / pages sections are the contract
+      // that Agents 2, 3 and 4 all build from.
+      const spec = await callAI(srsPrompt(prompt));
 
-      let frontend =
-        "// Locked on Free Plan. Upgrade to Standard ($9 / 10 Tokens) to unlock Agent 2 Frontend UI.";
-      let backend =
-        "// Locked on Free Plan. Upgrade to Standard ($9 / 10 Tokens) to unlock Agent 3 Backend API.";
-      let database =
-        "// Locked on Free Plan. Upgrade to Standard ($9 / 10 Tokens) to unlock Agent 4 Database Schema.";
-      let qa =
-        "# Locked on Free Plan\nUpgrade to Standard ($9), Pro ($49), or Exclusive Plan to unlock Agent 5 Security & Deployment QA.";
+      const LOCKED = "// Locked on Free Plan. Upgrade to Standard ($9 / 10 Tokens) to view, edit and export the code.";
+      let frontend = LOCKED;
+      let backend = LOCKED;
+      let database = LOCKED;
+      let qa = "# Locked on Free Plan\nUpgrade to Standard ($9), Pro ($49), or Exclusive to unlock the code and the QA report.";
 
-      // Agents 2-5 only for paid plans
-      if (user.tier !== "FREE") {
-        [frontend, backend, database, qa] = await Promise.all([
-          callGemini(
-            `Act as Agent 2 (Frontend UI Engineer). Based on this spec:\n${spec}\nWrite a complete, single-file Next.js 15 + Tailwind CSS client component (app/page.tsx) with modern dark UI and interactive state. Return ONLY valid TypeScript/React code.`
-          ),
-          callGemini(
-            `Act as Agent 3 (Backend API Engineer). Based on this spec:\n${spec}\nWrite a Next.js App Router API route (app/api/route.ts) with GET and POST handlers using Prisma. Return ONLY valid TypeScript code.`
-          ),
-          callGemini(
-            `Act as Agent 4 (Database Architect). Based on this spec:\n${spec}\nWrite a clean Prisma schema (schema.prisma) for PostgreSQL. Return ONLY valid Prisma schema code.`
-          ),
-          callGemini(
-            `Act as Agent 5 (Security & Deployment QA). Based on this spec:\n${spec}\nProvide a concise Markdown security audit and Vercel deployment checklist.`
-          ),
+      const buildFrontend = async () =>
+        normalizeFiles(await callAI(frontendPrompt(spec)), "app/page.tsx");
+
+      if (user.tier === "FREE") {
+        // Free builds only need the UI so the Live Preview can run.
+        frontend = await buildFrontend();
+      } else {
+        // Agents 2, 3, 4 run in parallel from the same SRS contract...
+        [frontend, backend, database] = await Promise.all([
+          buildFrontend(),
+          callAI(backendPrompt(spec)).then((t) => normalizeFiles(t, "app/api/route.ts")),
+          callAI(databasePrompt(spec)),
         ]);
+        // ...then Agent 5 reviews the REAL code they produced.
+        qa = await callAI(qaPrompt(spec, frontend, backend, database));
       }
 
       // Saved before responding, so the build is never lost to a refresh.
@@ -205,7 +214,7 @@ export async function POST(req: Request) {
       });
 
       return NextResponse.json({
-        spec,
+        spec: user.tier === "FREE" ? LOCKED : spec,
         frontend,
         backend,
         database,
@@ -213,6 +222,7 @@ export async function POST(req: Request) {
         historyId: saved.id,
         tier: user.tier,
         tokenBalance: balanceAfterReserve,
+        aiProviders: providersUsed,
       });
     } catch (genError) {
       // The build failed, so give the reserved token back.
@@ -222,9 +232,11 @@ export async function POST(req: Request) {
   } catch (error: unknown) {
     console.error("ORCHESTRATE ERROR:", error);
     const message =
-      error instanceof Error && error.message
+      error instanceof AiUnavailableError
+        ? `${error.message} Your token was not charged.`
+        : error instanceof Error && error.message
         ? error.message
         : "Failed to orchestrate agents.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: message }, { status: error instanceof AiUnavailableError ? 503 : 500 });
   }
 }

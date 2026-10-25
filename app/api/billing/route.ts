@@ -3,6 +3,8 @@ import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { TIER_RANK, TIER_TOKENS, type Tier } from "@/lib/plans";
 import { getBillingState } from "@/lib/tokens";
+import { stripeConfigured } from "@/lib/stripe";
+import { razorpayConfigured } from "@/lib/razorpay";
 
 const MAX_TOPUP = 500;
 
@@ -15,6 +17,8 @@ const MAX_TOPUP = 500;
  * => In production it only works if you explicitly set ALLOW_DEMO_BILLING=true.
  */
 function demoBillingEnabled() {
+  // With Stripe connected, plans and tokens may ONLY be granted by the verified webhook.
+  if (stripeConfigured() || razorpayConfigured()) return false;
   return (
     process.env.NODE_ENV !== "production" ||
     process.env.ALLOW_DEMO_BILLING === "true"
