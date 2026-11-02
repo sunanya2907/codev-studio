@@ -7,10 +7,17 @@ import { saveAs } from "file-saver";
 import { buildPreviewHtml } from "@/lib/preview";
 import { parseFiles, cleanPath } from "@/lib/files";
 import { scaffoldFiles } from "@/lib/scaffold";
-import { TIER_TOKENS, CUSTOMIZE_COST } from "@/lib/plans";
+import {
+  TIER_TOKENS,
+  CUSTOMIZE_COST,
+  STANDARD_PRICE_LABEL,
+  PRO_PRICE_LABEL,
+  FREE_TRIAL_BUILDS,
+} from "@/lib/plans";
 import { startCheckout, contactForExclusive } from "@/lib/billing-client";
 import PaymentMethodToggle from "@/components/PaymentMethodToggle";
-import BuildProgress from "@/components/BuildProgress";
+import { PLAN_DETAILS } from "@/lib/plan-details";
+import BuildProgress, { IDLE_STATUSES, type AgentStatuses } from "@/components/BuildProgress";
 import VoiceBuilder from "@/components/VoiceBuilder";
 import DomainSearch from "@/components/DomainSearch";
 import type { PaymentProvider } from "@/lib/plans";
@@ -52,6 +59,8 @@ interface HistoryItem {
   database: string;
   qa?: string;
   createdAt: string;
+  status?: string; // BUILDING | DONE | FAILED
+  error?: string | null;
 }
 
 // What a free user sees instead of code. The real code never reaches the editor box.
@@ -142,67 +151,6 @@ const QUICK_TEMPLATES = [
   },
 ];
 
-const PLAN_DETAILS = [
-  {
-    id: "FREE",
-    name: "Free Plan",
-    price: "$0",
-    period: "/ month",
-    tokens: 3,
-    badge: "3 Free Trial Builds",
-    desc: "Build and run your app in Live Preview. Code is locked.",
-    features: [
-      "3 Free Trial Builds (one-time)",
-      "Live Preview of your app",
-      "Locked: code view, copy, edit & export",
-    ],
-  },
-  {
-    id: "STANDARD",
-    name: "Standard Plan",
-    price: "$9",
-    period: "/ month",
-    tokens: 10,
-    badge: "10 Tokens Included",
-    desc: "Unlocks all 5 AI agents, full code access & ZIP Export.",
-    features: [
-      "10 Monthly Generation Tokens",
-      "All 5 Full-Stack Agents Unlocked",
-      "Full code access & ZIP Export",
-      "$1 Extra Token Top-Ups Anytime",
-    ],
-  },
-  {
-    id: "PRO",
-    name: "Pro Plan",
-    price: "$49",
-    period: "/ month",
-    tokens: 50,
-    badge: "50 Tokens Included",
-    desc: "High-volume token allowance for power builders.",
-    features: [
-      "50 Monthly Generation Tokens",
-      "All 5 Full-Stack Agents Unlocked",
-      "Unlimited History & Priority Build",
-      "$1 Extra Token Top-Ups Anytime",
-    ],
-  },
-  {
-    id: "EXCLUSIVE",
-    name: "Exclusive Plan",
-    price: "Custom",
-    period: "Monthly Billing",
-    tokens: 250,
-    badge: "250+ Custom Tokens",
-    desc: "Custom agent customization & dedicated monthly billing.",
-    features: [
-      "250+ Custom Monthly Token Volume",
-      "Custom Agent System Rules & Prompts",
-      "Consolidated Monthly Billing",
-      "On-Demand $1 Extra Token Top-Ups",
-    ],
-  },
-];
 
 // If the server times out, Vercel answers with an HTML error page instead of JSON.
 // Calling res.json() on that throws "Unexpected token '<'" - show something readable instead.
@@ -245,6 +193,10 @@ export default function EditorClient({
   const [customInstruction, setCustomInstruction] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [isBuilding, setIsBuilding] = useState(false); // full build only (shows the progress screen)
+  const [agentStatus, setAgentStatus] = useState<AgentStatuses>(IDLE_STATUSES);
+  const [buildStartedAt, setBuildStartedAt] = useState(() => Date.now());
+  const [buildLive, setBuildLive] = useState(true); // false when we reopened the page mid-build
+  const watching = React.useRef(false);
   const [copied, setCopied] = useState(false);
 
   const [buffers, setBuffers] = useState<{
@@ -321,12 +273,42 @@ export default function EditorClient({
         const data = await res.json();
         if (Array.isArray(data.history)) {
           setHistoryList(data.history);
-          if (restoreLatest && data.history.length > 0) {
-            openHistoryItem(data.history[0]);
-          }
+          const finished = data.history.find((h: HistoryItem) => !h.status || h.status === "DONE");
+          if (restoreLatest && finished) openHistoryItem(finished);
+          // A build is still running on the server (tab was closed or refreshed): follow it.
+          const running = data.history.find((h: HistoryItem) => h.status === "BUILDING");
+          if (restoreLatest && running) watchRunningBuild(new Date(running.createdAt).getTime());
         }
       }
     } catch (e) {}
+  };
+
+  // Follows a build that is running on the server without a live connection to it.
+  const watchRunningBuild = async (startedAt: number) => {
+    if (watching.current) return;
+    watching.current = true;
+    setBuildStartedAt(startedAt);
+    setBuildLive(false);
+    setIsBuilding(true);
+    setIsGenerating(true);
+    try {
+      for (let i = 0; i < 120; i++) {
+        await new Promise((r) => setTimeout(r, 4000));
+        const res = await fetch("/api/history?light=1").catch(() => null);
+        if (!res || !res.ok) continue;
+        const data = await res.json();
+        const latest = Array.isArray(data.history) ? data.history[0] : null;
+        if (!latest || latest.status === "BUILDING") continue;
+        if (latest.status === "FAILED") alert(latest.error || "The build failed. Your token was returned.");
+        await fetchHistory(latest.status === "DONE");
+        await fetchBillingStatus();
+        return;
+      }
+    } finally {
+      watching.current = false;
+      setIsBuilding(false);
+      setIsGenerating(false);
+    }
   };
 
   const currentAgent = AGENTS[activeAgentIndex];
@@ -408,6 +390,9 @@ export default function EditorClient({
 
     setIsGenerating(true);
     setIsBuilding(true);
+    setAgentStatus(IDLE_STATUSES);
+    setBuildStartedAt(Date.now());
+    setBuildLive(true);
 
     try {
       const res = await fetch("/api/orchestrate", {
@@ -416,13 +401,53 @@ export default function EditorClient({
         body: JSON.stringify({ prompt }),
       });
 
-      const data = await readJson(res);
-      if (!res.ok) {
-        if (data.code === "OUT_OF_TOKENS" || data.code === "PLAN_LOCKED") {
-          setShowPricingModal(true);
+      let data: any;
+      if (res.ok && res.body && (res.headers.get("content-type") || "").includes("ndjson")) {
+        // Live progress: one JSON line per event, the last line is the finished build.
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = "";
+        let failure: string | null = null;
+        data = null;
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          let nl: number;
+          while ((nl = buf.indexOf("\n")) >= 0) {
+            const line = buf.slice(0, nl).trim();
+            buf = buf.slice(nl + 1);
+            if (!line) continue;
+            let ev: any;
+            try {
+              ev = JSON.parse(line);
+            } catch {
+              continue;
+            }
+            if (ev.type === "agent") {
+              setAgentStatus((prev) => ({
+                ...prev,
+                [ev.agent]: ev.status === "start" ? "working" : ev.status === "retry" ? "retry" : "done",
+              }));
+            } else if (ev.type === "done") data = ev;
+            else if (ev.type === "error") failure = ev.error;
+          }
+        }
+        if (failure) throw new Error(failure);
+        if (!data) {
+          // The connection dropped but the server keeps building: follow it from the database.
+          watchRunningBuild(Date.now());
           return;
         }
-        throw new Error(data.error || "Failed to generate app");
+      } else {
+        data = await readJson(res);
+        if (!res.ok) {
+          if (data.code === "OUT_OF_TOKENS" || data.code === "PLAN_LOCKED") {
+            setShowPricingModal(true);
+            return;
+          }
+          throw new Error(data.error || "Failed to generate app");
+        }
       }
 
       setBuffers({
@@ -458,9 +483,12 @@ export default function EditorClient({
       fetchHistory();
     } catch (err: any) {
       alert(err.message || "Error during generation");
+      fetchBillingStatus(); // the token of a failed build was returned
     } finally {
-      setIsGenerating(false);
-      setIsBuilding(false);
+      if (!watching.current) {
+        setIsGenerating(false);
+        setIsBuilding(false);
+      }
     }
   };
 
@@ -683,7 +711,7 @@ export default function EditorClient({
 
               <p className="text-[11px] text-slate-400 mb-2.5">
                 {tier === "FREE"
-                  ? "3 free trial builds • Live Preview only"
+                  ? `${FREE_TRIAL_BUILDS} free trial builds • Live Preview only`
                   : "All 5 AI Agents Unlocked"}
               </p>
 
@@ -703,7 +731,7 @@ export default function EditorClient({
                 className="w-full py-2 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-500 hover:brightness-110 shadow-lg shadow-violet-600/25 transition"
               >
                 {tier === "FREE"
-                  ? "Upgrade Plan ($9)"
+                  ? `Upgrade Plan (${STANDARD_PRICE_LABEL})`
                   : "+ Buy $1 Extra Token"}
               </button>
             </div>
@@ -743,6 +771,11 @@ export default function EditorClient({
                 <div
                   key={item.id}
                   onClick={() => {
+                    if (item.status === "BUILDING") return;
+                    if (item.status === "FAILED") {
+                      alert(item.error || "This build failed. Your token was returned.");
+                      return;
+                    }
                     openHistoryItem(item);
                     setShowHistoryDrawer(false);
                   }}
@@ -751,8 +784,14 @@ export default function EditorClient({
                   <p className="text-xs font-semibold text-slate-200 line-clamp-2">
                     {item.prompt}
                   </p>
-                  <span className="text-[10px] text-slate-500 mt-1 block">
+                  <span className="text-[10px] text-slate-500 mt-1 flex items-center gap-2">
                     {new Date(item.createdAt).toLocaleDateString()}
+                    {item.status === "BUILDING" && (
+                      <span className="px-1.5 py-0.5 rounded-full bg-violet-500/20 text-violet-300 font-bold animate-pulse">Building…</span>
+                    )}
+                    {item.status === "FAILED" && (
+                      <span className="px-1.5 py-0.5 rounded-full bg-rose-500/20 text-rose-300 font-bold">Failed · token returned</span>
+                    )}
                   </span>
                 </div>
               ))}
@@ -860,7 +899,7 @@ export default function EditorClient({
 
                   {isLocked ? (
                     <span className="px-2 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/30 text-amber-400 text-[10px] font-semibold flex items-center gap-1">
-                      <Lock className="w-3 h-3" /> $9
+                      <Lock className="w-3 h-3" /> {STANDARD_PRICE_LABEL}
                     </span>
                   ) : (
                     <CheckCircle2
@@ -995,7 +1034,9 @@ export default function EditorClient({
               </div>
             </div>
 
-            {isBuilding && <BuildProgress free={tier === "FREE"} />}
+            {isBuilding && (
+              <BuildProgress free={tier === "FREE"} statuses={agentStatus} startedAt={buildStartedAt} live={buildLive} />
+            )}
 
             {activeTab === "editor" ? (
               <div className="flex-1 relative flex flex-col">
@@ -1025,7 +1066,7 @@ export default function EditorClient({
                       Unlock the code: {currentAgent.name} ({currentAgent.role})
                     </h4>
                     <p className="text-xs text-slate-300 max-w-md mb-6 leading-relaxed">
-                      Your Free Plan includes <strong>3 one-time trial builds</strong> where you can run your app in the <strong>Live Preview</strong>. Viewing, copying, editing and exporting the code needs a paid plan. Upgrade to <strong>Standard ($9 / 10 Tokens)</strong>, <strong>Pro ($49 / 50 Tokens)</strong>, or <strong>Exclusive</strong> to unlock all 5 agents and the full code!
+                      Your Free Plan includes <strong>{FREE_TRIAL_BUILDS} one-time trial builds</strong> where you can run your app in the <strong>Live Preview</strong>. Viewing, copying, editing and exporting the code needs a paid plan. Upgrade to <strong>Standard ({STANDARD_PRICE_LABEL} / {TIER_TOKENS.STANDARD} Tokens)</strong>, <strong>Pro ({PRO_PRICE_LABEL} / {TIER_TOKENS.PRO} Tokens)</strong>, or <strong>Exclusive</strong> to unlock all 5 agents and the full code!
                     </p>
                     <div className="flex flex-wrap items-center justify-center gap-3">
                       <button
@@ -1035,13 +1076,13 @@ export default function EditorClient({
                       >
                         {billingLoading === "STANDARD"
                           ? "Unlocking..."
-                          : "UNLOCK FOR ($9) — 10 TOKENS →"}
+                          : `UNLOCK FOR (${STANDARD_PRICE_LABEL}) — ${TIER_TOKENS.STANDARD} TOKENS →`}
                       </button>
                       <button
                         onClick={() => setShowPricingModal(true)}
                         className="px-5 py-3.5 rounded-xl font-bold text-xs text-slate-200 bg-slate-900 hover:bg-slate-800 border border-slate-700 transition"
                       >
-                        View All Plans ($49 Pro / Custom)
+                        View All Plans ({PRO_PRICE_LABEL} Pro / Custom)
                       </button>
                     </div>
                   </div>
@@ -1096,7 +1137,7 @@ export default function EditorClient({
               disabled={isCurrentAgentLocked || isGenerating}
               placeholder={
                 isCurrentAgentLocked
-                  ? "Code is locked on the Free Plan — upgrade for $9 to edit..."
+                  ? `Code is locked on the Free Plan — upgrade for ${STANDARD_PRICE_LABEL} to edit...`
                   : currentAgent.placeholder
               }
               className="select-text flex-1 bg-[#090D16] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-violet-500 disabled:opacity-50"

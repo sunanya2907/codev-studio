@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
@@ -29,7 +29,7 @@ model User {
   voiceSeconds    Int                @default(0) // prepaid voice time; 1 token buys VOICE_SECONDS_PER_TOKEN
   tokenPeriodStart DateTime          @default(now()) // start of the current monthly token period (see lib/tokens.ts)
   termsAccepted   Boolean            @default(false)
-  termsAcceptedAt DateTime           @default(now())
+  termsAcceptedAt DateTime?          // set only when the user accepts the terms
   projects        Project[]
   history         GenerationHistory[]
   voiceSessions   VoiceSession[]
@@ -80,9 +80,9 @@ model Project {
   userId       String
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   name         String   @default("Untitled App")
-  spec         String?  @db.Text
-  frontendCode String?  @db.Text
-  backendCode  String?  @db.Text
+  spec         String?  @db.LongText
+  frontendCode String?  @db.LongText
+  backendCode  String?  @db.LongText
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -94,15 +94,18 @@ model GenerationHistory {
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   prompt    String   @db.Text
-  spec      String   @db.Text
-  frontend  String   @db.Text
-  backend   String   @db.Text
-  database  String   @db.Text
-  qa        String   @db.Text @default("")
+  spec      String   @db.LongText
+  frontend  String   @db.LongText
+  backend   String   @db.LongText
+  database  String   @db.LongText
+  qa        String   @db.LongText
+  status    String   @default("DONE") // BUILDING | DONE | FAILED
+  error     String?  @db.Text
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([userId, createdAt])
+  @@index([status, createdAt])
 }
 
 // Stripe retries webhooks, so every event id is stored once to make sure

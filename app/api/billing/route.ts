@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
-import { TIER_RANK, TIER_TOKENS, type Tier } from "@/lib/plans";
+import { TIER_RANK, TIER_TOKENS, type Tier, MAX_TOPUP } from "@/lib/plans";
 import { getBillingState } from "@/lib/tokens";
 import { stripeConfigured } from "@/lib/stripe";
 import { razorpayConfigured } from "@/lib/razorpay";
 
-const MAX_TOPUP = 500;
 
 /**
  * No payment provider (e.g. Stripe) is connected yet, so upgrading a plan or

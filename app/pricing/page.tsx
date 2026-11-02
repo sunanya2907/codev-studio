@@ -5,67 +5,10 @@ import Link from "next/link";
 import { Check, Coins, Crown, Plus, X } from "lucide-react";
 import { startCheckout, contactForExclusive } from "@/lib/billing-client";
 import PaymentMethodToggle from "@/components/PaymentMethodToggle";
+import { PLAN_DETAILS } from "@/lib/plan-details";
+import { TOKEN_PRICE_LABEL } from "@/lib/plans";
 import type { PaymentProvider } from "@/lib/plans";
 
-const PLAN_DETAILS = [
-  {
-    id: "FREE",
-    name: "Free Plan",
-    price: "$0",
-    period: "/ month",
-    badge: "3 Free Trial Builds",
-    desc: "Build and run your app in Live Preview. Code is locked.",
-    features: [
-      "3 Free Trial Builds (one-time)",
-      "Live Preview of your app",
-      "Locked: code view, copy, edit & export",
-    ],
-  },
-  {
-    id: "STANDARD",
-    name: "Standard Plan",
-    price: "$9",
-    period: "/ month",
-    badge: "10 Tokens Included",
-    tag: "Best Value",
-    desc: "Unlocks all 5 AI agents, full code access & ZIP Export.",
-    features: [
-      "10 Monthly Generation Tokens",
-      "All 5 Full-Stack Agents Unlocked",
-      "Full code access & ZIP Export",
-      "$1 Extra Token Top-Ups Anytime",
-    ],
-  },
-  {
-    id: "PRO",
-    name: "Pro Plan",
-    price: "$49",
-    period: "/ month",
-    badge: "50 Tokens Included",
-    tag: "Popular",
-    desc: "High-volume token allowance for power builders.",
-    features: [
-      "50 Monthly Generation Tokens",
-      "All 5 Full-Stack Agents Unlocked",
-      "Unlimited History & Priority Build",
-      "$1 Extra Token Top Ups Anytime",
-    ],
-  },
-  {
-    id: "EXCLUSIVE",
-    name: "Exclusive Plan",
-    price: "Custom",
-    period: "Monthly Billing",
-    badge: "250+ Custom Tokens",
-    desc: "Custom agent customization & dedicated monthly billing.",
-    features: [
-      "250+ Custom Monthly Token Volume",
-      "Custom Agent System Rules & Prompts",
-      "Consolidated Monthly Billing",
-      "On Demand $1 Extra Token Top-Ups",
-    ],
-  },
-];
 
 export default function PricingPage() {
   const [extraTokensCount, setExtraTokensCount] = useState<number>(5);
@@ -113,7 +56,7 @@ export default function PricingPage() {
               <Crown className="w-3.5 h-3.5" /> BUILD CORE PLANS & TOKEN BILLING
             </span>
             <h1 className="text-2xl md:text-3xl font-extrabold text-white mt-1">
-              Unlock All 5 AI Agents or Top Up Extra Tokens ($1)
+              Unlock All 5 AI Agents or Top Up Extra Tokens ({TOKEN_PRICE_LABEL})
             </h1>
           </div>
           <Link
@@ -200,10 +143,10 @@ export default function PricingPage() {
           <div>
             <div className="flex items-center gap-2 text-amber-400 font-bold text-sm">
               <Coins className="w-4 h-4" />
-              <span>Need More Tokens This Month? Buy Extra Tokens for $1 Each</span>
+              <span>Need More Tokens This Month? Buy Extra Tokens for {TOKEN_PRICE_LABEL} Each</span>
             </div>
             <p className="text-xs text-slate-400 mt-1">
-              Finished your monthly plan tokens early? Top up extra tokens instantly at <strong className="text-slate-200">$1 per token</strong> without changing your subscription.
+              Finished your monthly plan tokens early? Top up extra tokens instantly at <strong className="text-slate-200">{TOKEN_PRICE_LABEL} per token</strong> without changing your subscription.
             </p>
           </div>
 

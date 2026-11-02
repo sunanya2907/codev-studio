@@ -22,3 +22,63 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #475569;
 }
+/* ===== Build_Core animations (home page + build progress) ===== */
+html { scroll-behavior: smooth; }
+
+@keyframes bc-drift-a { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(9vw,7vh) scale(1.18); } }
+@keyframes bc-drift-b { 0%,100% { transform: translate(0,0) scale(1.1); } 50% { transform: translate(-8vw,-6vh) scale(0.92); } }
+@keyframes bc-drift-c { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(-5vw,8vh) scale(1.2); } }
+@keyframes bc-float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+@keyframes bc-gradient { 0% { background-position: 0% 50%; } 100% { background-position: 200% 50%; } }
+@keyframes bc-shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+@keyframes bc-rise { from { opacity: 0; transform: translateY(26px); } to { opacity: 1; transform: none; } }
+@keyframes bc-word { 0% { opacity: 0; transform: translateY(12px); } 12%,88% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translateY(-12px); } }
+@keyframes bc-spin { to { transform: rotate(360deg); } }
+@keyframes bc-ring { 0% { transform: scale(.9); opacity: .7; } 100% { transform: scale(1.8); opacity: 0; } }
+@keyframes bc-bar { 0% { width: 0%; } 92%,100% { width: 100%; } }
+@keyframes bc-row {
+  0%   { opacity: .4; border-color: rgb(30 41 59); background-color: rgba(15,23,42,.5); }
+  8%   { opacity: 1;  border-color: rgba(139,92,246,.7); background-color: rgba(139,92,246,.12); box-shadow: 0 0 26px -6px rgba(139,92,246,.7); }
+  36%  { opacity: 1;  border-color: rgba(139,92,246,.7); background-color: rgba(139,92,246,.12); box-shadow: 0 0 26px -6px rgba(139,92,246,.7); }
+  40%  { opacity: 1;  border-color: rgba(16,185,129,.4); background-color: rgba(16,185,129,.1); box-shadow: none; }
+  92%  { opacity: 1;  border-color: rgba(16,185,129,.4); background-color: rgba(16,185,129,.1); }
+  100% { opacity: .4; border-color: rgb(30 41 59); background-color: rgba(15,23,42,.5); }
+}
+@keyframes bc-working { 0%,6% { opacity: 0; } 8%,36% { opacity: 1; } 40%,100% { opacity: 0; } }
+@keyframes bc-done    { 0%,38% { opacity: 0; } 40%,92% { opacity: 1; } 96%,100% { opacity: 0; } }
+
+.bc-orb-a { animation: bc-drift-a 22s ease-in-out infinite; }
+.bc-orb-b { animation: bc-drift-b 26s ease-in-out infinite; }
+.bc-orb-c { animation: bc-drift-c 30s ease-in-out infinite; }
+.bc-float { animation: bc-float 6s ease-in-out infinite; }
+.bc-grad-text { background-size: 200% auto; animation: bc-gradient 6s linear infinite; }
+.bc-shimmer { background: linear-gradient(90deg, transparent, rgba(255,255,255,.35), transparent); animation: bc-shimmer 1.6s linear infinite; }
+.bc-rise { opacity: 0; animation: bc-rise .8s cubic-bezier(.2,.7,.2,1) forwards; }
+.bc-word { display: inline-block; animation: bc-word 2.6s ease-in-out infinite; }
+.bc-spin { animation: bc-spin 8s linear infinite; }
+.bc-ring { animation: bc-ring 2.4s ease-out infinite; }
+.bc-bar { animation: bc-bar 12s linear infinite; }
+.bc-row { animation: bc-row 12s ease-in-out infinite; }
+.bc-working { animation: bc-working 12s linear infinite; }
+.bc-done { animation: bc-done 12s linear infinite; }
+.bc-grid {
+  background-image: linear-gradient(rgba(148,163,184,.07) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,.07) 1px, transparent 1px);
+  background-size: 56px 56px;
+  -webkit-mask-image: radial-gradient(ellipse at 50% 30%, #000 20%, transparent 75%);
+  mask-image: radial-gradient(ellipse at 50% 30%, #000 20%, transparent 75%);
+}
+.bc-reveal { opacity: 0; transform: translateY(28px); transition: opacity .8s ease, transform .8s cubic-bezier(.2,.7,.2,1); }
+.bc-reveal.bc-in { opacity: 1; transform: none; }
+.bc-card-glow { position: relative; }
+.bc-card-glow::before {
+  content: ""; position: absolute; inset: -1px; border-radius: inherit; padding: 1px; pointer-events: none;
+  background: conic-gradient(from 0deg, rgba(139,92,246,.0), rgba(139,92,246,.9), rgba(34,211,238,.9), rgba(139,92,246,.0) 60%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
+  animation: bc-spin 6s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+  .bc-reveal, .bc-rise { opacity: 1; transform: none; }
+}

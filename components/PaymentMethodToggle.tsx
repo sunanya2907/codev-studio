@@ -1,18 +1,26 @@
 "use client";
 
 import React from "react";
-import type { PaymentProvider } from "@/lib/plans";
+import {
+  PLAN_PRICE_CENTS,
+  PLAN_PRICE_PAISE,
+  TOKEN_PRICE_CENTS,
+  TOKEN_PRICE_PAISE,
+  inr,
+  usd,
+  type PaymentProvider,
+} from "@/lib/plans";
 
 const OPTIONS: { id: PaymentProvider; title: string; sub: string }[] = [
   {
     id: "razorpay",
     title: "India: UPI / Cards / Wallets",
-    sub: "GPay, PhonePe, Paytm, FamPay, any UPI app, debit & credit cards. Pay in ₹ (Standard ₹799, Pro ₹3,999, token ₹99). 30 days per payment.",
+    sub: `GPay, PhonePe, Paytm, FamPay, any UPI app, debit & credit cards. Pay in ₹ (Standard ${inr(PLAN_PRICE_PAISE.STANDARD)}, Pro ${inr(PLAN_PRICE_PAISE.PRO)}, token ${inr(TOKEN_PRICE_PAISE)}). 30 days per payment.`,
   },
   {
     id: "stripe",
     title: "International: Card",
-    sub: "Visa / Mastercard / Amex in USD ($9 / $49, $1 per token). Renews automatically every month.",
+    sub: `Visa / Mastercard / Amex in USD (${usd(PLAN_PRICE_CENTS.STANDARD)} / ${usd(PLAN_PRICE_CENTS.PRO)}, ${usd(TOKEN_PRICE_CENTS)} per token). Renews automatically every month.`,
   },
 ];
 

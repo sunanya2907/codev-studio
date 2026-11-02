@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
-import { BUILD_COST, CUSTOMIZE_COST } from "@/lib/plans";
+import { BUILD_COST, CUSTOMIZE_COST, STANDARD_PRICE_LABEL } from "@/lib/plans";
 import { getBillingState, reserveTokens, refundTokens } from "@/lib/tokens";
 import { normalizeFiles } from "@/lib/files";
+import { failBuild, reconcileStaleBuilds } from "@/lib/builds";
+import { runStaticChecks } from "@/lib/checks";
+import { validateBackend, validateFrontend, validateSchema, validateSrs } from "@/lib/validate";
 import { AiNotConfiguredError, AiUnavailableError, aiConfigured, generateText } from "@/lib/ai";
 import {
   srsPrompt,
@@ -120,7 +123,7 @@ export async function POST(req: Request) {
         return NextResponse.json(
           {
             error:
-              "Free Plan only includes the Live Preview. Upgrade to Standard ($9) to view, edit and export the code!",
+              `Free Plan only includes the Live Preview. Upgrade to Standard (${STANDARD_PRICE_LABEL}) to view, edit and export the code!`,
             code: "PLAN_LOCKED",
           },
           { status: 403 }
@@ -160,12 +163,10 @@ export async function POST(req: Request) {
       }
     }
 
-    // CASE 2: Full app build (costs 1 token)
+    // CASE 2: Full app build (costs 1 token). Streams live progress, and is stored in the
+    // database from the first second, so closing the tab can never lose a build or a token.
     if (!prompt) {
-      return NextResponse.json(
-        { error: "Please describe the app you want to build." },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Please describe the app you want to build." }, { status: 400 });
     }
     if (prompt.length > MAX_PROMPT_LENGTH) {
       return NextResponse.json(
@@ -174,61 +175,158 @@ export async function POST(req: Request) {
       );
     }
 
-    // Reserve the token atomically BEFORE doing the expensive work, so two
-    // simultaneous requests can't both spend the last token.
-    const balanceAfterReserve = await reserveTokens(session.user.id, BUILD_COST);
+    const userId = session.user.id;
+    await reconcileStaleBuilds(userId); // returns tokens of builds that were killed earlier
+
+    const running = await db.generationHistory.count({ where: { userId, status: "BUILDING" } });
+    if (running > 0) {
+      return NextResponse.json(
+        { error: "You already have a build running. Wait for it to finish (it also appears in History)." },
+        { status: 409 }
+      );
+    }
+
+    // Reserve the token atomically BEFORE the expensive work.
+    const balanceAfterReserve = await reserveTokens(userId, BUILD_COST);
     if (balanceAfterReserve === null) return outOfTokens(BUILD_COST);
 
+    let buildId: string;
     try {
-      // Agent 1 writes the SRS, whose data model / API / pages sections are the contract
-      // that Agents 2, 3 and 4 all build from.
-      const spec = await callAI(srsPrompt(prompt));
-
-      const LOCKED = "// Locked on Free Plan. Upgrade to Standard ($9 / 10 Tokens) to view, edit and export the code.";
-      let frontend = LOCKED;
-      let backend = LOCKED;
-      let database = LOCKED;
-      let qa = "# Locked on Free Plan\nUpgrade to Standard ($9), Pro ($49), or Exclusive to unlock the code and the QA report.";
-
-      const buildFrontend = async () =>
-        normalizeFiles(await callAI(frontendPrompt(spec)), "app/page.tsx");
-
-      if (user.tier === "FREE") {
-        // Free builds only need the UI so the Live Preview can run.
-        frontend = await buildFrontend();
-      } else {
-        // Agents 2, 3, 4 run in parallel from the same SRS contract...
-        [frontend, backend, database] = await Promise.all([
-          buildFrontend(),
-          callAI(backendPrompt(spec)).then((t) => normalizeFiles(t, "app/api/route.ts")),
-          callAI(databasePrompt(spec)),
-        ]);
-        // ...then Agent 5 reviews the REAL code they produced.
-        qa = await callAI(qaPrompt(spec, frontend, backend, database));
-      }
-
-      // Saved before responding, so the build is never lost to a refresh.
-      const saved = await db.generationHistory.create({
-        data: { userId: session.user.id, prompt, spec, frontend, backend, database, qa },
+      const row = await db.generationHistory.create({
+        data: { userId, prompt, spec: "", frontend: "", backend: "", database: "", qa: "", status: "BUILDING" },
         select: { id: true },
       });
-
-      return NextResponse.json({
-        spec: user.tier === "FREE" ? LOCKED : spec,
-        frontend,
-        backend,
-        database,
-        qa,
-        historyId: saved.id,
-        tier: user.tier,
-        tokenBalance: balanceAfterReserve,
-        aiProviders: providersUsed,
-      });
-    } catch (genError) {
-      // The build failed, so give the reserved token back.
-      await refundTokens(session.user.id, BUILD_COST);
-      throw genError;
+      buildId = row.id;
+    } catch (e) {
+      await refundTokens(userId, BUILD_COST);
+      throw e;
     }
+
+    const isFree = user.tier === "FREE";
+    const enc = new TextEncoder();
+    let clientConnected = true;
+
+    const stream = new ReadableStream({
+      async start(controller) {
+        const send = (o: Record<string, unknown>) => {
+          if (!clientConnected) return;
+          try {
+            controller.enqueue(enc.encode(JSON.stringify(o) + "\n"));
+          } catch {
+            clientConnected = false; // the user left; the build carries on and is saved
+          }
+        };
+        const event = (agent: AgentKey, status: "start" | "retry" | "done") =>
+          send({ type: "agent", agent, status });
+        const warnings: string[] = [];
+
+        // One agent: run, check the answer, ask once more if it is broken.
+        const runAgent = async (
+          key: AgentKey,
+          basePrompt: string,
+          clean: (t: string) => string,
+          validate: (t: string) => string[]
+        ): Promise<string> => {
+          event(key, "start");
+          let text = clean(await callAI(basePrompt));
+          let issues = validate(text);
+          if (issues.length) {
+            event(key, "retry");
+            const second = clean(
+              await callAI(
+                `${basePrompt}\n\nYOUR PREVIOUS ANSWER HAD THESE PROBLEMS. Fix all of them and return the COMPLETE corrected answer in the required format:\n- ${issues.join("\n- ")}`
+              )
+            );
+            const issues2 = validate(second);
+            if (issues2.length <= issues.length) {
+              text = second;
+              issues = issues2;
+            }
+          }
+          if (issues.some((i) => /^No |defines no models|no datasource|far too short/.test(i)) || !text.trim()) {
+            throw new Error(`Agent ${AGENT_KEYS.indexOf(key) + 1} could not produce a usable result (${issues[0] || "empty answer"}). Please try again.`);
+          }
+          issues.forEach((i) => warnings.push(`Agent ${AGENT_KEYS.indexOf(key) + 1}: ${i}`));
+          event(key, "done");
+          return text;
+        };
+
+        try {
+          const LOCKED = `// Locked on Free Plan. Upgrade to Standard (${STANDARD_PRICE_LABEL}) to view, edit and export the code.`;
+          let frontend = LOCKED;
+          let backend = LOCKED;
+          let database = LOCKED;
+          let qa = `# Locked on Free Plan\nUpgrade to Standard (${STANDARD_PRICE_LABEL}) or higher to unlock the code and the QA report.`;
+
+          // Agent 1: the SRS (its data model / API / pages sections are the contract for 2, 3, 4)
+          const spec = await runAgent("spec", srsPrompt(prompt), (t) => t, validateSrs);
+
+          const frontendRun = () =>
+            runAgent("frontend", frontendPrompt(spec), (t) => normalizeFiles(t, "app/page.tsx"), validateFrontend);
+
+          if (isFree) {
+            frontend = await frontendRun(); // free builds only need the UI for the Live Preview
+          } else {
+            // Agents 2, 3, 4 in parallel, all from the same SRS contract
+            [frontend, backend, database] = await Promise.all([
+              frontendRun(),
+              runAgent("backend", backendPrompt(spec), (t) => normalizeFiles(t, "app/api/route.ts"), validateBackend),
+              runAgent("database", databasePrompt(spec), (t) => t, validateSchema),
+            ]);
+            // Agent 5 reviews the REAL code; code-level checks are added as facts
+            event("qa", "start");
+            qa = await callAI(qaPrompt(spec, frontend, backend, database));
+            const checks = runStaticChecks(spec, frontend, backend, database);
+            const warn = warnings.length
+              ? `\n\n---\n## Output warnings\nThe agents' answers passed with these small problems:\n${warnings.map((w) => `- ${w}`).join("\n")}\n`
+              : "";
+            qa = `${qa.trim()}${warn}${checks.markdown}`;
+            event("qa", "done");
+          }
+
+          await db.generationHistory.update({
+            where: { id: buildId },
+            data: { spec, frontend, backend, database, qa, status: "DONE", error: null },
+          });
+
+          send({
+            type: "done",
+            spec: isFree ? LOCKED : spec,
+            frontend,
+            backend,
+            database,
+            qa,
+            historyId: buildId,
+            tier: user.tier,
+            tokenBalance: balanceAfterReserve,
+            aiProviders: providersUsed,
+          });
+        } catch (genError) {
+          console.error("BUILD FAILED:", genError);
+          const message =
+            genError instanceof AiUnavailableError
+              ? `${genError.message} Your token was returned.`
+              : `${genError instanceof Error && genError.message ? genError.message : "The build failed."} Your token was returned.`;
+          await failBuild(userId, buildId, message); // flips the row and refunds, once
+          send({ type: "error", error: message });
+        } finally {
+          try {
+            controller.close();
+          } catch {}
+        }
+      },
+      cancel() {
+        clientConnected = false; // tab closed: keep building, the result lands in History
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "application/x-ndjson; charset=utf-8",
+        "Cache-Control": "no-store, no-transform",
+        "X-Accel-Buffering": "no",
+      },
+    });
   } catch (error: unknown) {
     console.error("ORCHESTRATE ERROR:", error);
     const message =

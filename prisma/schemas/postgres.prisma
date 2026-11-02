@@ -1,0 +1,144 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Tier {
+  FREE
+  STANDARD
+  PRO
+  EXCLUSIVE
+}
+
+model User {
+  id              String             @id @default(uuid())
+  name            String?
+  email           String             @unique
+  password        String?            // Added for Credentials / Email-Password Auth
+  emailVerified   DateTime?
+  image           String?
+  stripeCustomerId String?           @unique
+  stripeSubscriptionId String?
+  planExpiresAt   DateTime?          // Razorpay plans are prepaid for 30 days; null for Stripe subscriptions
+  tier            Tier               @default(FREE)
+  tokenBalance    Int                @default(3)
+  voiceSeconds    Int                @default(0) // prepaid voice time; 1 token buys VOICE_SECONDS_PER_TOKEN
+  tokenPeriodStart DateTime          @default(now()) // start of the current monthly token period (see lib/tokens.ts)
+  termsAccepted   Boolean            @default(false)
+  termsAcceptedAt DateTime?          // set only when the user accepts the terms
+  projects        Project[]
+  history         GenerationHistory[]
+  voiceSessions   VoiceSession[]
+  accounts        Account[]
+  sessions        Session[]
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+}
+
+model Account {
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?  @db.Text
+  access_token      String?  @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?  @db.Text
+  session_state     String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([provider, providerAccountId])
+}
+
+model Session {
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@id([identifier, token])
+}
+
+model Project {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String   @default("Untitled App")
+  spec         String?  @db.Text
+  frontendCode String?  @db.Text
+  backendCode  String?  @db.Text
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model GenerationHistory {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  prompt    String   @db.Text
+  spec      String   @db.Text
+  frontend  String   @db.Text
+  backend   String   @db.Text
+  database  String   @db.Text
+  qa        String   @db.Text
+  status    String   @default("DONE") // BUILDING | DONE | FAILED
+  error     String?  @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+}
+
+// Stripe retries webhooks, so every event id is stored once to make sure
+// tokens/plans are never granted twice for the same payment.
+model StripeEvent {
+  id        String   @id
+  type      String
+  createdAt DateTime @default(now())
+}
+
+// Every Razorpay payment id is stored once, so verify + webhook can both run safely
+// without ever granting a plan or tokens twice.
+model RazorpayPayment {
+  id        String   @id // razorpay payment id (pay_...)
+  orderId   String
+  userId    String
+  kind      String   // "plan" | "tokens"
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+
+// One voice conversation. Time is billed by the server clock (see lib/voice.ts).
+model VoiceSession {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status        String    @default("active") // active | ended
+  startedAt     DateTime  @default(now())
+  lastTickAt    DateTime  @default(now())
+  endedAt       DateTime?
+  secondsBilled Int       @default(0)
+
+  @@index([userId, status])
+}

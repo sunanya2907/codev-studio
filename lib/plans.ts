@@ -56,3 +56,11 @@ export const VOICE_SECONDS_PER_TOKEN = Math.round(
 export const VOICE_MAX_GAP_SECONDS = 45;
 
 export type PaymentProvider = "stripe" | "razorpay";
+
+// ---- Display helpers: every price in the UI and in server messages comes from here ----
+export const usd = (cents: number) => `$${(cents / 100).toFixed(cents % 100 === 0 ? 0 : 2)}`;
+export const inr = (paise: number) => `\u20B9${(paise / 100).toLocaleString("en-IN")}`;
+export const STANDARD_PRICE_LABEL = usd(PLAN_PRICE_CENTS.STANDARD);
+export const PRO_PRICE_LABEL = usd(PLAN_PRICE_CENTS.PRO);
+export const TOKEN_PRICE_LABEL = usd(TOKEN_PRICE_CENTS);
+export const FREE_TRIAL_BUILDS = TIER_TOKENS.FREE;
