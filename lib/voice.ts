@@ -2,11 +2,11 @@ import { db } from "@/lib/db";
 import { VOICE_MAX_GAP_SECONDS, VOICE_SECONDS_PER_TOKEN } from "@/lib/plans";
 
 /**
- * Voice billing: $0.25/minute, paid with tokens.
+ * Voice billing: $0.50/minute, paid with tokens.
  *
  * - A user has a prepaid pool of voice seconds (User.voiceSeconds).
  * - Starting a session when the pool is nearly empty converts ONE token into
- *   VOICE_SECONDS_PER_TOKEN seconds (240 s = 4 min). Unused seconds are kept.
+ *   VOICE_SECONDS_PER_TOKEN seconds (120 s = 2 min). Unused seconds are kept.
  * - Time is metered by the SERVER clock, never by the browser: every tick/turn bills
  *   the whole time since the previous one. A session that goes silent for more than
  *   VOICE_MAX_GAP_SECONDS is closed, so a client can't get free time by skipping ticks.

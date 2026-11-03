@@ -2,12 +2,16 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Mic, MicOff, X, Volume2, Loader2, Sparkles } from "lucide-react";
-import { VOICE_PRICE_CENTS_PER_MIN, VOICE_SECONDS_PER_TOKEN } from "@/lib/plans";
+import { VOICE_PRICE_LABEL, VOICE_SECONDS_PER_TOKEN, CUSTOMIZE_COST } from "@/lib/plans";
 
-// Talk to the AI to describe your app. The browser does speech-to-text and text-to-speech
+// Talk to the AI to describe your app ("build" mode) or to change the app you already have
+// ("edit" mode: the AI repeats the change back out loud, then applies it on "apply").
+//  The browser does speech-to-text and text-to-speech
 // (free, no extra keys); the server does the AI turns and bills the time (see lib/voice.ts).
 
 type Msg = { role: "user" | "assistant"; text: string };
+export type VoiceMode = "build" | "edit";
+export type ApplyResult = { ok: boolean; message: string };
 type Phase = "idle" | "starting" | "listening" | "thinking" | "speaking" | "ended";
 
 const TICK_MS = 10_000; // billing heartbeat; the server enforces a 45 s maximum silence
@@ -17,18 +21,29 @@ const LANGS = [
   { code: "hi-IN", label: "हिन्दी" },
 ];
 
+const APPLY_WORDS = /^(please )?(apply|apply (it|that|this|these|the|all)( changes?)?|do it|go ahead|make (it|the changes?))\W*$/i;
+const MORE_TIME = `Continue to use 1 more token (${VOICE_SECONDS_PER_TOKEN / 60} more minutes).`;
+
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.max(0, s) % 60).padStart(2, "0")}`;
 
 export default function VoiceBuilder({
   open,
+  mode = "build",
+  context = "",
   onClose,
   onApply,
+  onApplyEdit,
   onBalanceChange,
   onNeedTokens,
 }: {
   open: boolean;
+  mode?: VoiceMode;
+  /** Edit mode: short summary of the current app so the AI knows what it is changing. */
+  context?: string;
   onClose: () => void;
-  onApply: (prompt: string) => void;
+  onApply?: (prompt: string) => void;
+  /** Edit mode: runs the change (costs a token) and says what happened. */
+  onApplyEdit?: (agent: string, instruction: string) => Promise<ApplyResult>;
   onBalanceChange: (tokenBalance: number) => void;
   onNeedTokens: () => void;
 }) {
@@ -48,6 +63,17 @@ export default function VoiceBuilder({
   const clockRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const langRef = useRef(lang);
   langRef.current = lang;
+  // The callbacks below live in the first render's closure, so they read these refs.
+  const modeRef = useRef(mode);
+  modeRef.current = mode;
+  const contextRef = useRef(context);
+  contextRef.current = context;
+  const onApplyEditRef = useRef(onApplyEdit);
+  onApplyEditRef.current = onApplyEdit;
+  const applyingRef = useRef(false);
+  // Edit mode: messages before this index belong to changes that were already applied.
+  const baseRef = useRef(0);
+  const [base, setBase] = useState(0);
 
   const setPhaseBoth = (p: Phase) => {
     phaseRef.current = p;
@@ -172,6 +198,14 @@ export default function VoiceBuilder({
   const sendTurn = async (text: string) => {
     const id = sessionRef.current;
     if (!id) return;
+    if (
+      modeRef.current === "edit" &&
+      APPLY_WORDS.test(text.trim()) &&
+      messagesRef.current.slice(baseRef.current).some((m) => m.role === "user")
+    ) {
+      void applyEdit(); // "apply" said out loud
+      return;
+    }
     setPhaseBoth("thinking");
     const history = messagesRef.current;
     const withUser: Msg[] = [...history, { role: "user", text }];
@@ -182,11 +216,17 @@ export default function VoiceBuilder({
       const res = await fetch("/api/voice/turn", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: id, transcript: text, history }),
+        body: JSON.stringify({
+          sessionId: id,
+          transcript: text,
+          history: history.slice(baseRef.current),
+          mode: modeRef.current,
+          context: modeRef.current === "edit" ? contextRef.current : undefined,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        if (data.code === "VOICE_EXHAUSTED") return endWith("Your voice time is used up. Continue to use 1 more token (4 more minutes).");
+        if (data.code === "VOICE_EXHAUSTED") return endWith(`Your voice time is used up. ${MORE_TIME}`);
         if (data.code === "VOICE_SESSION_ENDED") return endWith("The voice session ended. Please start again.");
         setError(data.error || "Something went wrong. Please try again.");
         if (sessionRef.current) listen();
@@ -244,7 +284,7 @@ export default function VoiceBuilder({
           });
           const t = await r.json().catch(() => ({}));
           if (t.state === "active") setRemaining(t.remainingSeconds);
-          else if (t.state === "exhausted") endWith("Your voice time is used up. Continue to use 1 more token (4 more minutes).");
+          else if (t.state === "exhausted") endWith(`Your voice time is used up. ${MORE_TIME}`);
           else if (t.state === "expired" || t.state === "inactive") endWith("The voice session ended. Please start again.");
         } catch {}
       }, TICK_MS);
@@ -253,7 +293,9 @@ export default function VoiceBuilder({
       // Greeting (spoken locally, free), then listen.
       const greeting =
         messagesRef.current.length === 0
-          ? "Hi! Tell me about the app or website you want to build."
+          ? modeRef.current === "edit"
+            ? "Hi! Tell me what you want to change in your app."
+            : "Hi! Tell me about the app or website you want to build."
           : "Okay, I'm listening. Go on.";
       if (messagesRef.current.length === 0) {
         const m: Msg[] = [{ role: "assistant", text: greeting }];
@@ -264,6 +306,64 @@ export default function VoiceBuilder({
     } catch {
       setError("Network problem. Please try again.");
       setPhaseBoth("idle");
+    }
+  };
+
+  // Edit mode: summarise the spoken changes, run them, then say the result out loud.
+  const applyEdit = async () => {
+    const id = sessionRef.current;
+    if (!id || applyingRef.current) return;
+    const pending = messagesRef.current.slice(baseRef.current);
+    if (!pending.some((m) => m.role === "user")) return;
+    applyingRef.current = true;
+    stopRecognition();
+    window.speechSynthesis?.cancel();
+    setPhaseBoth("thinking");
+    setError("");
+    try {
+      const res = await fetch("/api/voice/turn", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: id,
+          finalize: true,
+          mode: "edit",
+          context: contextRef.current,
+          history: pending,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (data.code === "VOICE_EXHAUSTED") return endWith(`Your voice time is used up. ${MORE_TIME}`);
+        if (data.code === "VOICE_SESSION_ENDED") return endWith("The voice session ended. Please start again.");
+        setError(data.error || "Could not prepare the change. Please try again.");
+        if (sessionRef.current) listen();
+        return;
+      }
+      if (typeof data.remainingSeconds === "number") setRemaining(data.remainingSeconds);
+
+      const run = onApplyEditRef.current;
+      const result: ApplyResult = run
+        ? await run(String(data.agent), String(data.instruction))
+        : { ok: false, message: "Editing is not available here." };
+
+      const reply: Msg = { role: "assistant", text: result.message };
+      const next = [...messagesRef.current, reply];
+      messagesRef.current = next;
+      setMessages(next);
+      if (result.ok) {
+        baseRef.current = next.length; // the next change starts a fresh summary
+        setBase(next.length);
+        setError("");
+      } else {
+        setError(result.message);
+      }
+      if (sessionRef.current) speak(result.message, () => sessionRef.current && listen());
+    } catch {
+      setError("Network problem. Please try again.");
+      if (sessionRef.current) listen();
+    } finally {
+      applyingRef.current = false;
     }
   };
 
@@ -287,7 +387,7 @@ export default function VoiceBuilder({
       } catch {}
     }
     await finishSession();
-    onApply(brief.slice(0, 500));
+    onApply?.(brief.slice(0, 500));
     setPhaseBoth("idle");
     onClose();
   };
@@ -301,8 +401,8 @@ export default function VoiceBuilder({
   if (!open) return null;
 
   const active = phase === "listening" || phase === "thinking" || phase === "speaking";
-  const price = (VOICE_PRICE_CENTS_PER_MIN / 100).toFixed(2);
-  const canUse = messages.some((m) => m.role === "user");
+  const edit = mode === "edit";
+  const canUse = messages.slice(edit ? base : 0).some((m) => m.role === "user");
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
@@ -310,10 +410,11 @@ export default function VoiceBuilder({
         <div className="flex items-start justify-between mb-4">
           <div>
             <h3 className="text-lg font-extrabold text-white flex items-center gap-2">
-              <Mic className="w-5 h-5 text-cyan-400" /> Talk to build
+              <Mic className="w-5 h-5 text-cyan-400" /> {edit ? "Talk to edit" : "Talk to build"}
             </h3>
             <p className="text-[11px] text-slate-400 mt-1">
-              ${price}/min · 1 token = {VOICE_SECONDS_PER_TOKEN / 60} minutes · unused time is kept
+              {VOICE_PRICE_LABEL} · 1 token = {VOICE_SECONDS_PER_TOKEN / 60} minutes · unused time is kept
+              {edit && ` · applying a change uses ${CUSTOMIZE_COST} token`}
             </p>
           </div>
           <button onClick={close} className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800">
@@ -330,7 +431,9 @@ export default function VoiceBuilder({
             <div className="h-56 overflow-y-auto rounded-2xl bg-[#090D16] border border-slate-800 p-3 space-y-2 mb-3">
               {messages.length === 0 && (
                 <p className="text-xs text-slate-500 text-center mt-16">
-                  Press Start and describe your idea out loud. The assistant will ask a few questions, then you can use the result as your app description.
+                  {edit
+                    ? 'Press Start and say what you want to change. The assistant repeats the change back to you. Say "apply" (or press Apply changes) to make it, then keep talking for more changes.'
+                    : "Press Start and describe your idea out loud. The assistant will ask a few questions, then you can use the result as your app description."}
                 </p>
               )}
               {messages.map((m, i) => (
@@ -389,9 +492,9 @@ export default function VoiceBuilder({
                   Stop
                 </button>
               )}
-              {canUse && phase !== "starting" && phase !== "thinking" && (
-                <button onClick={useForApp} className="flex-1 py-2.5 rounded-xl font-bold text-xs text-slate-950 bg-gradient-to-r from-amber-400 to-yellow-300 hover:brightness-110 flex items-center justify-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5" /> Use this for my app
+              {canUse && phase !== "starting" && phase !== "thinking" && (!edit || active) && (
+                <button onClick={edit ? applyEdit : useForApp} className="flex-1 py-2.5 rounded-xl font-bold text-xs text-slate-950 bg-gradient-to-r from-amber-400 to-yellow-300 hover:brightness-110 flex items-center justify-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5" /> {edit ? "Apply changes" : "Use this for my app"}
                 </button>
               )}
             </div>

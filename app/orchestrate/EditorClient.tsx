@@ -13,12 +13,14 @@ import {
   STANDARD_PRICE_LABEL,
   PRO_PRICE_LABEL,
   FREE_TRIAL_BUILDS,
+  VOICE_PRICE_LABEL,
+  VOICE_TOKEN_LABEL,
 } from "@/lib/plans";
 import { startCheckout, contactForExclusive } from "@/lib/billing-client";
 import PaymentMethodToggle from "@/components/PaymentMethodToggle";
 import { PLAN_DETAILS } from "@/lib/plan-details";
 import BuildProgress, { IDLE_STATUSES, type AgentStatuses } from "@/components/BuildProgress";
-import VoiceBuilder from "@/components/VoiceBuilder";
+import VoiceBuilder, { type ApplyResult } from "@/components/VoiceBuilder";
 import DomainSearch from "@/components/DomainSearch";
 import type { PaymentProvider } from "@/lib/plans";
 import {
@@ -190,6 +192,7 @@ export default function EditorClient({
   // Prompt & Agent Buffers
   const [prompt, setPrompt] = useState("");
   const [showVoice, setShowVoice] = useState(false);
+  const [voiceMode, setVoiceMode] = useState<"build" | "edit">("build");
   const [customInstruction, setCustomInstruction] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [isBuilding, setIsBuilding] = useState(false); // full build only (shows the progress screen)
@@ -547,6 +550,61 @@ export default function EditorClient({
     }
   };
 
+  // "Talk to edit": open the voice panel (editing is a paid feature, like Customize).
+  const openVoiceEdit = () => {
+    if (tier === "FREE") {
+      setShowPricingModal(true);
+      return;
+    }
+    setVoiceMode("edit");
+    setShowVoice(true);
+  };
+
+  // Short summary of the current app, so the voice AI knows what it is changing.
+  const voiceContext = `Requirements:\n${buffers.spec.slice(0, 1800)}\n\nCurrent page code (start):\n${buffers.frontend.slice(0, 1200)}`;
+
+  // Called by the voice panel when the person says "apply". Same call and cost as Customize.
+  const applyVoiceEdit = async (agentKey: string, instruction: string): Promise<ApplyResult> => {
+    const agent = AGENTS.find((a) => a.key === agentKey) ?? AGENTS[1];
+    const key = agent.key as keyof typeof buffers;
+    if (tier === "FREE") {
+      setShowPricingModal(true);
+      return { ok: false, message: "Editing needs a paid plan. Please upgrade first." };
+    }
+    if (tokenBalance < CUSTOMIZE_COST) {
+      setShowPricingModal(true);
+      return { ok: false, message: `Applying a change needs ${CUSTOMIZE_COST} token and you have none left. Please buy a token, then say apply again.` };
+    }
+    setIsGenerating(true);
+    try {
+      const res = await fetch("/api/orchestrate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: prompt || "Update current module",
+          agent: key,
+          currentCode: buffers[key],
+          instruction,
+          historyId: currentHistoryId,
+        }),
+      });
+      const data = await readJson(res);
+      if (!res.ok) {
+        if (data.code === "PLAN_LOCKED" || data.code === "OUT_OF_TOKENS") setShowPricingModal(true);
+        return { ok: false, message: data.error || "The change failed. Please try again." };
+      }
+      const updated = data.updatedCode || data[key] || data.spec || buffers[key];
+      setBuffers((prev) => ({ ...prev, [key]: updated }));
+      if (typeof data.tokenBalance === "number") setTokenBalance(data.tokenBalance);
+      setActiveAgentIndex(AGENTS.findIndex((a) => a.key === key));
+      return { ok: true, message: `Done. I updated the ${agent.role}. Check the result, or tell me the next change.` };
+    } catch (e: any) {
+      return { ok: false, message: e?.message || "The change failed. Please try again." };
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   // Export ZIP (Locked on Free Plan)
   const handleExportZip = async () => {
     if (tier === "FREE") {
@@ -823,10 +881,13 @@ export default function EditorClient({
             </div>
             <button
               type="button"
-              onClick={() => setShowVoice(true)}
+              onClick={() => {
+                setVoiceMode("build");
+                setShowVoice(true);
+              }}
               className="mb-2 w-full py-2 rounded-xl text-[11px] font-bold text-cyan-300 bg-cyan-500/10 border border-cyan-500/30 hover:bg-cyan-500/20 transition flex items-center justify-center gap-1.5"
             >
-              <Mic className="w-3.5 h-3.5" /> Talk to build · $0.25/min (1 token = 4 min)
+              <Mic className="w-3.5 h-3.5" /> Talk to build · {VOICE_PRICE_LABEL} ({VOICE_TOKEN_LABEL})
             </button>
             <textarea
               value={prompt}
@@ -978,6 +1039,15 @@ export default function EditorClient({
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-400/20 text-amber-200">
                 + $1 Top Up
               </span>
+            </button>
+
+            <button
+              onClick={openVoiceEdit}
+              title={`Change your app by talking · ${VOICE_PRICE_LABEL} (${VOICE_TOKEN_LABEL})`}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 text-xs font-bold transition"
+            >
+              <Mic className="w-3.5 h-3.5" />
+              Talk to edit
             </button>
 
             <button
@@ -1161,9 +1231,13 @@ export default function EditorClient({
       </main>
 
       <VoiceBuilder
+        key={voiceMode}
         open={showVoice}
+        mode={voiceMode}
+        context={voiceContext}
         onClose={() => setShowVoice(false)}
         onApply={(text) => setPrompt(text.slice(0, 500))}
+        onApplyEdit={applyVoiceEdit}
         onBalanceChange={(n) => setTokenBalance(n)}
         onNeedTokens={() => {
           setShowVoice(false);

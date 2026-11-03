@@ -45,13 +45,17 @@ export const PLAN_PRICE_PAISE: Record<"STANDARD" | "PRO", number> = {
 export const TOKEN_PRICE_PAISE = 9900; // Rs 99 per extra token
 export const PLAN_DURATION_DAYS = 30;
 
-// ---- Voice ($0.25 per minute, paid with tokens) --------------------------------------
+// ---- Voice ($0.50 per minute, paid with tokens) --------------------------------------
 /** Voice price in US cents per minute. */
-export const VOICE_PRICE_CENTS_PER_MIN = 25;
-/** One token ($1) buys this many seconds of voice (240 s = 4 minutes at $0.25/min). */
+export const VOICE_PRICE_CENTS_PER_MIN = 50;
+/** One token ($1) buys this many seconds of voice (120 s = 2 minutes at $0.50/min). */
 export const VOICE_SECONDS_PER_TOKEN = Math.round(
   (TOKEN_PRICE_CENTS / VOICE_PRICE_CENTS_PER_MIN) * 60
 );
+/** Label such as "1 token = 2 minutes", used in the UI. */
+export const VOICE_TOKEN_LABEL = `1 token = ${VOICE_SECONDS_PER_TOKEN / 60} min`;
+/** Price label such as "$0.50/min". */
+export const VOICE_PRICE_LABEL = `$${(VOICE_PRICE_CENTS_PER_MIN / 100).toFixed(2)}/min`;
 /** A session may not go silent (no billing tick / turn) for longer than this. */
 export const VOICE_MAX_GAP_SECONDS = 45;
 
