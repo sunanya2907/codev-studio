@@ -142,3 +142,28 @@ model VoiceSession {
 
   @@index([userId, status])
 }
+
+
+// Errors caught by the background debug agent (see lib/debug-agent.ts).
+// Identical errors share one row (same fingerprint) and just increase `count`.
+model ErrorLog {
+  id          String    @id @default(cuid())
+  fingerprint String    @unique
+  source      String    // server | client
+  message     String    @db.Text
+  stack       String?   @db.Text
+  route       String?
+  method      String?
+  userId      String?   // plain column on purpose: logs must outlive deleted users
+  count       Int       @default(1)
+  status      String    @default("NEW") // NEW | ANALYZING | DIAGNOSED | FAILED | RESOLVED
+  attempts    Int       @default(0)
+  severity    String?   // low | medium | high | critical
+  diagnosis   String?   @db.Text // Markdown written by the agent: cause + suggested fix
+  firstSeenAt DateTime  @default(now())
+  lastSeenAt  DateTime  @default(now())
+  analyzedAt  DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status, lastSeenAt])
+}

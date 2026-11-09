@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { reportError } from "@/lib/debug-agent";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { BUILD_COST, CUSTOMIZE_COST, STANDARD_PRICE_LABEL } from "@/lib/plans";
@@ -303,6 +304,7 @@ export async function POST(req: Request) {
           });
         } catch (genError) {
           console.error("BUILD FAILED:", genError);
+          void reportError(genError, { source: "server", route: "/api/orchestrate", method: "POST" });
           const message =
             genError instanceof AiUnavailableError
               ? `${genError.message} Your token was returned.`
@@ -329,6 +331,7 @@ export async function POST(req: Request) {
     });
   } catch (error: unknown) {
     console.error("ORCHESTRATE ERROR:", error);
+    void reportError(error, { source: "server", route: "/api/orchestrate", method: "POST" });
     const message =
       error instanceof AiUnavailableError
         ? `${error.message} Your token was not charged.`

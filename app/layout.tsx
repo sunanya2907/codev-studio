@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import ErrorReporter from "@/components/ErrorReporter";
 
 export const metadata: Metadata = {
   title: "Build_Core",
@@ -13,7 +14,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="h-full antialiased">
-      <body className="min-h-full flex flex-col bg-neutral-950 text-white font-sans">{children}</body>
+      <body className="min-h-full flex flex-col bg-neutral-950 text-white font-sans">
+        <ErrorReporter />
+        {children}
+      </body>
     </html>
   );
 }

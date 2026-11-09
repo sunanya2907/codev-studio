@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { reportError } from "@/lib/debug-agent";
 import { auth } from "@/auth";
 import { AiNotConfiguredError, AiUnavailableError, aiConfigured, generateText } from "@/lib/ai";
 import { chargeElapsed } from "@/lib/voice";
@@ -150,6 +151,7 @@ export async function POST(req: Request) {
     });
   } catch (err) {
     console.error("VOICE TURN ERROR:", err);
+    void reportError(err, { source: "server", route: "/api/voice/turn", method: "POST" });
     if (err instanceof AiUnavailableError) {
       return NextResponse.json({ error: err.message }, { status: 503 });
     }

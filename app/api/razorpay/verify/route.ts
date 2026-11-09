@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { reportError } from "@/lib/debug-agent";
 import { auth } from "@/auth";
 import { grantRazorpayPayment } from "@/lib/razorpay-grant";
 import { verifyCheckoutSignature } from "@/lib/razorpay";
@@ -35,6 +36,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, result });
   } catch (err) {
     console.error("RAZORPAY VERIFY ERROR:", err);
+    void reportError(err, { source: "server", route: "/api/razorpay/verify", method: "POST" });
     return NextResponse.json({ error: "Verification failed. If you were charged, it will be applied shortly." }, { status: 500 });
   }
 }

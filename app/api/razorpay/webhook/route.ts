@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { reportError } from "@/lib/debug-agent";
 import { verifyWebhookSignature } from "@/lib/razorpay";
 import { grantRazorpayPayment } from "@/lib/razorpay-grant";
 
@@ -26,6 +27,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ received: true });
   } catch (err) {
     console.error("RAZORPAY WEBHOOK ERROR:", err);
+    void reportError(err, { source: "server", route: "/api/razorpay/webhook", method: "POST" });
     return NextResponse.json({ error: "Webhook handler failed." }, { status: 500 }); // Razorpay retries
   }
 }

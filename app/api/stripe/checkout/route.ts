@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { reportError } from "@/lib/debug-agent";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { MAX_TOPUP, PLAN_PRICE_CENTS, TOKEN_PRICE_CENTS } from "@/lib/plans";
@@ -143,6 +144,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid action." }, { status: 400 });
   } catch (err) {
     console.error("STRIPE CHECKOUT ERROR:", err);
+    void reportError(err, { source: "server", route: "/api/stripe/checkout", method: "POST" });
     const message =
       err instanceof StripeError ? err.message : "Could not start the payment. Please try again.";
     return NextResponse.json({ error: message }, { status: 500 });

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { reportError } from "@/lib/debug-agent";
 import { verifyStripeSignature } from "@/lib/stripe";
 import { processStripeEvent, type StripeEvent } from "@/lib/stripe-webhook";
 
@@ -29,6 +30,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ received: true, result });
   } catch (err) {
     console.error("STRIPE WEBHOOK ERROR:", event.type, err);
+    void reportError(err, { source: "server", route: "/api/stripe/webhook", method: "POST" });
     // 500 => Stripe retries later with the same event id.
     return NextResponse.json({ error: "Webhook handler failed." }, { status: 500 });
   }
