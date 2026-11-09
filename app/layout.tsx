@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import ErrorReporter from "@/components/ErrorReporter";
+import IconHelp from "@/components/IconHelp";
 
 export const metadata: Metadata = {
   title: "Build_Core",
@@ -16,6 +17,7 @@ export default function RootLayout({
     <html lang="en" className="h-full antialiased">
       <body className="min-h-full flex flex-col bg-neutral-950 text-white font-sans">
         <ErrorReporter />
+        <IconHelp />
         {children}
       </body>
     </html>

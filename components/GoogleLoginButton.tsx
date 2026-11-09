@@ -41,7 +41,7 @@ export default function GoogleLoginButton({
             : "bg-neutral-800 text-neutral-500 cursor-not-allowed opacity-60"
         }`}
       >
-        <svg className="w-4 h-4" viewBox="0 0 24 24">
+        <svg className="w-4 h-4" viewBox="0 0 24 24" data-help="Google|Sign in with your Google account. No new password needed.">
           <path
             fill={accepted ? "#4285F4" : "currentColor"}
             d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
