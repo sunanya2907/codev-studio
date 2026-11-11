@@ -24,8 +24,8 @@ import {
 // the output is much bigger. If Vercel rejects 300 on your plan, lower this to 60.
 export const maxDuration = 300;
 
-// AI providers (Gemini, Claude, GPT, DeepSeek) and their fail-over order live in lib/ai.ts.
-// Model names are env-configurable there (GEMINI_MODEL, ANTHROPIC_MODEL, ...).
+// The AI provider (Gemini only) lives in lib/ai.ts.
+// The model name is env-configurable there (GEMINI_MODEL).
 
 const MAX_PROMPT_LENGTH = 500; // matches the "x/500" counter in the editor
 const MAX_INSTRUCTION_LENGTH = 1000;

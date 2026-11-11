@@ -2,7 +2,7 @@
 //
 // Flow:  error happens -> reportError() stores it (deduplicated by fingerprint) ->
 //        runDebugAgent() picks up NEW errors in the background -> the AI (through the same
-//        fail-over router as the rest of the app) writes a diagnosis + suggested fix ->
+//        AI helper as the rest of the app) writes a diagnosis + suggested fix ->
 //        you read it on /admin/debug.
 //
 // The agent only DIAGNOSES. It never edits code or touches user data by itself.
