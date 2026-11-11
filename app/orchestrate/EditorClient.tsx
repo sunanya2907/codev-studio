@@ -126,34 +126,6 @@ const AGENTS = [
   },
 ];
 
-const QUICK_TEMPLATES = [
-  {
-    title: "Task Manager",
-    subtitle: "PostgreSQL + Auth",
-    prompt:
-      "Build a modern Kanban Task Manager with PostgreSQL database, user authentication, priority tags, and dark mode analytics dashboard.",
-  },
-  {
-    title: "E-Commerce Store",
-    subtitle: "Next.js + Stripe",
-    prompt:
-      "Build a full-stack E-Commerce storefront with product filtering, slide-out cart, Stripe checkout integration, and order management.",
-  },
-  {
-    title: "AI SaaS Portal",
-    subtitle: "Modern UI + Tokens",
-    prompt:
-      "Build an AI content generator SaaS dashboard with token credit billing, history logs, and real-time streaming cards.",
-  },
-  {
-    title: "CMS Blog Engine",
-    subtitle: "Markdown + DB",
-    prompt:
-      "Build a developer blog and documentation platform with Markdown editor, tags, reading time, and comment threads.",
-  },
-];
-
-
 // If the server times out, Vercel answers with an HTML error page instead of JSON.
 // Calling res.json() on that throws "Unexpected token '<'" - show something readable instead.
 async function readJson(res: Response) {
@@ -664,10 +636,10 @@ export default function EditorClient({
       {/* 1. LEFTMOST COLLAPSIBLE NAVIGATION & PLAN PROGRESS SIDEBAR */}
       <aside
         className={`${
-          sidebarOpen ? "w-56" : "w-16"
+          sidebarOpen ? "w-64" : "w-16"
         } transition-all duration-300 bg-[#070A12] border-r border-slate-800/80 flex flex-col justify-between shrink-0 z-20`}
       >
-        <div>
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
           <div className="h-16 px-4 flex items-center justify-between border-b border-slate-800/80">
             <div className="flex items-center gap-2.5 overflow-hidden">
               <button
@@ -747,10 +719,85 @@ export default function EditorClient({
               {sidebarOpen && <span>Terms & Conditions</span>}
             </Link>
           </nav>
+
+          {/* MULTI-AGENT PIPELINE (hides/shrinks with the sidebar) */}
+          <div className="px-3 pb-3 pt-1 space-y-1.5">
+            {sidebarOpen ? (
+              <div className="flex items-center justify-between px-1 pb-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  Multi-Agent Pipeline
+                </span>
+                <span className="text-[10px] text-emerald-400 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  {tier === "FREE" ? "1/5" : "5/5"}
+                </span>
+              </div>
+            ) : (
+              <div className="border-t border-slate-800/80 mb-2" />
+            )}
+
+            {AGENTS.map((agent, index) => {
+              const Icon = agent.icon;
+              const isSelected = activeAgentIndex === index;
+              const isLocked = tier === "FREE" && !agent.freeAccessible;
+
+              return (
+                <button
+                  key={agent.id}
+                  onClick={() => setActiveAgentIndex(index)}
+                  title={`${agent.name} • ${agent.role}${isLocked ? " (Locked)" : ""}`}
+                  className={`w-full flex items-center ${
+                    sidebarOpen ? "justify-between px-2.5 py-2" : "justify-center p-1.5"
+                  } rounded-xl border text-left transition-all ${
+                    isSelected
+                      ? "bg-gradient-to-r from-violet-600/25 via-indigo-600/20 to-transparent border-violet-500 text-white shadow-md shadow-violet-950/50"
+                      : "bg-[#131B2E]/70 hover:bg-[#131B2E] border-slate-800/80 text-slate-300"
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div
+                      className={`relative w-8 h-8 shrink-0 rounded-lg bg-gradient-to-br ${agent.badgeColor} flex items-center justify-center text-white shadow`}
+                    >
+                      <Icon className="w-4 h-4" />
+                      {!sidebarOpen && isLocked && (
+                        <Lock className="absolute -top-1 -right-1 w-3 h-3 text-amber-400 bg-[#070A12] rounded-full p-[1px]" />
+                      )}
+                    </div>
+                    {sidebarOpen && (
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold truncate">
+                          {agent.name}
+                          <span className="text-[10px] font-normal text-slate-400">
+                            {" "}• {agent.role}
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-slate-400">
+                          {isLocked ? "Locked on Free Plan" : "Editable Buffer"}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {sidebarOpen &&
+                    (isLocked ? (
+                      <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/30 text-amber-400 text-[10px] font-semibold flex items-center gap-1">
+                        <Lock className="w-3 h-3" /> {STANDARD_PRICE_LABEL}
+                      </span>
+                    ) : (
+                      <CheckCircle2
+                        className={`shrink-0 w-4 h-4 ${
+                          isSelected ? "text-cyan-400" : "text-emerald-500/60"
+                        }`}
+                      />
+                    ))}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Bottom Active Plan & Token Balance Card */}
-        <div className="p-3">
+        <div className="p-3 shrink-0">
           {sidebarOpen ? (
             <div className="rounded-2xl bg-gradient-to-b from-slate-900/95 to-[#0B0F19] border border-slate-800 p-4 shadow-xl">
               <div className="flex items-center justify-between mb-1.5">
@@ -910,91 +957,6 @@ export default function EditorClient({
                 ? "Build App (1 Token)"
                 : "Out of Tokens — Top Up ($1)"}
             </button>
-          </div>
-
-          {/* Agent 1 to Agent 5 Selector Stack */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between px-1">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                Multi-Agent Pipeline
-              </span>
-              <span className="text-[10px] text-emerald-400 flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                {tier === "FREE" ? "1/5 Unlocked" : "5/5 Unlocked"}
-              </span>
-            </div>
-
-            {AGENTS.map((agent, index) => {
-              const Icon = agent.icon;
-              const isSelected = activeAgentIndex === index;
-              const isLocked = tier === "FREE" && !agent.freeAccessible;
-
-              return (
-                <button
-                  key={agent.id}
-                  onClick={() => setActiveAgentIndex(index)}
-                  className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl border text-left transition-all ${
-                    isSelected
-                      ? "bg-gradient-to-r from-violet-600/25 via-indigo-600/20 to-transparent border-violet-500 text-white shadow-md shadow-violet-950/50"
-                      : "bg-[#131B2E]/70 hover:bg-[#131B2E] border-slate-800/80 text-slate-300"
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`w-8 h-8 rounded-lg bg-gradient-to-br ${agent.badgeColor} flex items-center justify-center text-white font-bold text-xs shadow`}
-                    >
-                      <Icon className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <div className="text-xs font-bold flex items-center gap-1.5">
-                        {agent.name}
-                        <span className="text-[10px] font-normal text-slate-400">
-                          • {agent.role}
-                        </span>
-                      </div>
-                      <span className="text-[10px] text-slate-400">
-                        {isLocked ? "Locked on Free Plan" : "Editable Buffer"}
-                      </span>
-                    </div>
-                  </div>
-
-                  {isLocked ? (
-                    <span className="px-2 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/30 text-amber-400 text-[10px] font-semibold flex items-center gap-1">
-                      <Lock className="w-3 h-3" /> {STANDARD_PRICE_LABEL}
-                    </span>
-                  ) : (
-                    <CheckCircle2
-                      className={`w-4 h-4 ${
-                        isSelected ? "text-cyan-400" : "text-emerald-500/60"
-                      }`}
-                    />
-                  )}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Quick Templates Grid */}
-          <div className="pt-1">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-2 px-1">
-              Quick Templates
-            </span>
-            <div className="grid grid-cols-2 gap-2">
-              {QUICK_TEMPLATES.map((tpl, i) => (
-                <button
-                  key={i}
-                  onClick={() => setPrompt(tpl.prompt)}
-                  className="p-2.5 rounded-xl bg-[#131B2E]/90 hover:bg-slate-800/80 border border-slate-800 text-left transition group"
-                >
-                  <div className="text-xs font-bold text-slate-200 group-hover:text-violet-300 truncate">
-                    {tpl.title}
-                  </div>
-                  <div className="text-[10px] text-slate-400 truncate mt-0.5">
-                    {tpl.subtitle}
-                  </div>
-                </button>
-              ))}
-            </div>
           </div>
         </div>
       </section>
