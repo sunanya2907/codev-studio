@@ -33,6 +33,7 @@ model User {
   projects        Project[]
   history         GenerationHistory[]
   voiceSessions   VoiceSession[]
+  testerRedemptions TesterRedemption[]
   accounts        Account[]
   sessions        Session[]
   createdAt       DateTime           @default(now())
@@ -166,4 +167,37 @@ model ErrorLog {
   updatedAt   DateTime  @updatedAt
 
   @@index([status, lastSeenAt])
+}
+
+
+// Tester / developer invite links (see lib/tester.ts). Only a SHA-256 hash of the secret
+// token is stored, so a database leak does not leak working links.
+model TesterInvite {
+  id          String    @id @default(cuid())
+  tokenHash   String    @unique
+  label       String
+  tier        Tier      @default(EXCLUSIVE)
+  tokens      Int       @default(50)
+  accessDays  Int       @default(14)  // how long a tester keeps the plan after redeeming
+  maxUses     Int       @default(10)
+  uses        Int       @default(0)
+  expiresAt   DateTime                // the link itself stops working after this
+  revokedAt   DateTime?
+  createdBy   String
+  createdAt   DateTime  @default(now())
+  redemptions TesterRedemption[]
+
+  @@index([createdAt])
+}
+
+model TesterRedemption {
+  id         String       @id @default(cuid())
+  inviteId   String
+  invite     TesterInvite @relation(fields: [inviteId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  redeemedAt DateTime     @default(now())
+
+  @@unique([inviteId, userId])
+  @@index([userId])
 }

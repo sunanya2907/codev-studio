@@ -178,7 +178,8 @@ export default function Landing({ builds }: { builds: number | null }) {
       </div>
 
       {/* nav */}
-      <header className="relative z-10 mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
+      <header className="fixed inset-x-0 top-0 z-50 border-b border-white/5 bg-[#05070d]/70 backdrop-blur-md">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
         <Link href="/" className="flex items-center gap-2 text-lg font-extrabold tracking-tight">
           <span className="relative flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-violet-600 to-cyan-500">
             <Zap className="h-4 w-4" />
@@ -192,10 +193,11 @@ export default function Landing({ builds }: { builds: number | null }) {
           <a href="#pricing" className="hover:text-white transition">Pricing</a>
           <a href="#start" className="rounded-full border border-slate-700 px-4 py-1.5 hover:border-cyan-400 hover:text-white transition">Sign in</a>
         </nav>
+        </div>
       </header>
 
       {/* hero */}
-      <section className="relative z-10 mx-auto grid max-w-6xl items-center gap-12 px-6 pb-20 pt-8 lg:grid-cols-[1.1fr_0.9fr]">
+      <section className="relative z-10 mx-auto grid max-w-6xl items-center gap-12 px-6 pb-20 pt-[6.5rem] lg:grid-cols-[1.1fr_0.9fr]">
         <div>
           <span className="bc-rise inline-flex items-center gap-2 rounded-full border border-slate-800 bg-slate-900/70 px-3 py-1 text-[11px] font-mono uppercase tracking-widest text-cyan-300" style={{ animationDelay: "0.05s" }}>
             <span className="relative flex h-2 w-2">
@@ -246,7 +248,7 @@ export default function Landing({ builds }: { builds: number | null }) {
       )}
 
       {/* agents */}
-      <section id="agents" className="relative z-10 mx-auto max-w-6xl px-6 py-20">
+      <section id="agents" className="scroll-mt-20 relative z-10 mx-auto max-w-6xl px-6 py-20">
         <Reveal>
           <p className="text-xs font-mono uppercase tracking-widest text-cyan-300">The pipeline</p>
           <h2 className="mt-2 text-3xl font-extrabold tracking-tight sm:text-4xl">Five agents, one connected result</h2>
@@ -285,7 +287,7 @@ export default function Landing({ builds }: { builds: number | null }) {
       </section>
 
       {/* how */}
-      <section id="how" className="relative z-10 mx-auto max-w-6xl px-6 py-20">
+      <section id="how" className="scroll-mt-20 relative z-10 mx-auto max-w-6xl px-6 py-20">
         <Reveal>
           <p className="text-xs font-mono uppercase tracking-widest text-cyan-300">How it works</p>
           <h2 className="mt-2 text-3xl font-extrabold tracking-tight sm:text-4xl">From idea to a running app in minutes</h2>
@@ -312,7 +314,7 @@ export default function Landing({ builds }: { builds: number | null }) {
       </section>
 
       {/* pricing (numbers come from lib/plans.ts) */}
-      <section id="pricing" className="relative z-10 mx-auto max-w-6xl px-6 py-20">
+      <section id="pricing" className="scroll-mt-20 relative z-10 mx-auto max-w-6xl px-6 py-20">
         <Reveal>
           <p className="text-xs font-mono uppercase tracking-widest text-cyan-300">Pricing</p>
           <h2 className="mt-2 text-3xl font-extrabold tracking-tight sm:text-4xl">Start free. Pay only when you need the code.</h2>
@@ -342,7 +344,7 @@ export default function Landing({ builds }: { builds: number | null }) {
       </section>
 
       {/* sign in */}
-      <section id="start" className="relative z-10 mx-auto max-w-6xl px-6 pb-24 pt-10">
+      <section id="start" className="scroll-mt-20 relative z-10 mx-auto max-w-6xl px-6 pb-24 pt-10">
         <Reveal>
           <div className="mx-auto max-w-md">
             <div className="bc-card-glow rounded-3xl bg-neutral-900/90 p-8 shadow-2xl backdrop-blur">
