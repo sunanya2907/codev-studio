@@ -311,7 +311,7 @@ export function buildPreviewHtml(frontendCode: string): string {
   const csp = [
     "default-src 'none'",
     "script-src 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://cdn.tailwindcss.com",
-    "style-src 'unsafe-inline' https://cdn.tailwindcss.com",
+    "style-src 'unsafe-inline' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com",
     "img-src data: blob: https:",
     "font-src data: https:",
     "connect-src 'none'",

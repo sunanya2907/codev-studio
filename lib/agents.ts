@@ -1,3 +1,18 @@
+import {
+  SRS_TRACKING_ADDENDUM,
+  FRONTEND_TRACKING_ADDENDUM,
+  BACKEND_TRACKING_ADDENDUM,
+  DATABASE_TRACKING_ADDENDUM,
+  QA_TRACKING_ADDENDUM,
+} from "@/lib/tracking";
+import {
+  SRS_HEALTH_ADDENDUM,
+  FRONTEND_HEALTH_ADDENDUM,
+  BACKEND_HEALTH_ADDENDUM,
+  DATABASE_HEALTH_ADDENDUM,
+  QA_HEALTH_ADDENDUM,
+} from "@/lib/healthcare";
+
 // Prompts for the 5 agents. Agent 1's SRS contains two BINDING contracts (data model and
 // API contract). Agents 2, 3 and 4 all read them, so the frontend, the API and the
 // database agree on names and shapes even though they run in parallel.
@@ -7,7 +22,7 @@ const FILE_FORMAT = `OUTPUT FORMAT (strict): return every file as
 <complete file contents>
 Start each file with that exact marker line on its own line. No markdown fences, no explanations, nothing before the first marker.`;
 
-export const srsPrompt = (idea: string) => `You are Agent 1, a senior business analyst. Write a complete Software Requirements Specification (SRS) in Markdown, in the style of IEEE 830, for this web app idea:
+export const srsPrompt = (idea: string, tracking = false, healthcare = false) => `You are Agent 1, a senior business analyst. Write a complete Software Requirements Specification (SRS) in Markdown, in the style of IEEE 830, for this web app idea:
 "${idea}"
 
 Use exactly these sections, in this order:
@@ -21,9 +36,9 @@ Use exactly these sections, in this order:
 ## 7. Pages & UI Flows  (BINDING CONTRACT. For every page: route | purpose | main components | API endpoints it calls. Include a landing/dashboard page at "/".)
 ## 8. Out of Scope
 
-Rules: be specific and realistic for THIS idea, no placeholders, no filler. Sections 5, 6 and 7 will be used verbatim by other engineers, so every name must be precise and consistent. Keep the whole document under about 2,500 words. Return only the Markdown.`;
+Rules: be specific and realistic for THIS idea, no placeholders, no filler. Sections 5, 6 and 7 will be used verbatim by other engineers, so every name must be precise and consistent. Keep the whole document under about 2,500 words. Return only the Markdown.${tracking ? SRS_TRACKING_ADDENDUM : ""}${healthcare ? SRS_HEALTH_ADDENDUM(tracking) : ""}`;
 
-export const frontendPrompt = (srs: string) => `You are Agent 2, a senior frontend engineer. Using ONLY the SRS below, build the WHOLE frontend as a multi-page Next.js 15 App Router + TypeScript + Tailwind CSS app.
+export const frontendPrompt = (srs: string, tracking = false, healthcare = false) => `You are Agent 2, a senior frontend engineer. Using ONLY the SRS below, build the WHOLE frontend as a multi-page Next.js 15 App Router + TypeScript + Tailwind CSS app.
 
 Deliver:
 - app/page.tsx : the main landing/dashboard page ("/").
@@ -41,12 +56,12 @@ Rules:
 - The backend may not be running when this is previewed: wrap every fetch in try/catch and, on failure, fall back to realistic in-memory demo data so every page is usable and interactive. Keep the real API calls in lib/api.ts.
 - The code must compile without TypeScript or JSX errors.
 
-${FILE_FORMAT}
+${FILE_FORMAT}${tracking ? FRONTEND_TRACKING_ADDENDUM : ""}${healthcare ? FRONTEND_HEALTH_ADDENDUM(tracking) : ""}
 
 SRS:
 ${srs}`;
 
-export const backendPrompt = (srs: string) => `You are Agent 3, a senior backend engineer. Using ONLY the SRS below, build the WHOLE backend as Next.js 15 App Router route handlers with TypeScript and Prisma.
+export const backendPrompt = (srs: string, tracking = false, healthcare = false) => `You are Agent 3, a senior backend engineer. Using ONLY the SRS below, build the WHOLE backend as Next.js 15 App Router route handlers with TypeScript and Prisma.
 
 Deliver:
 - app/api/<resource>/route.ts (GET list and POST create) and app/api/<resource>/[id]/route.ts (GET one, PATCH, DELETE) for every resource in SRS section 6, with EXACTLY the paths, methods, request and response JSON from the contract.
@@ -62,24 +77,24 @@ Rules:
 - Never expose passwordHash. Wrap handlers in try/catch. Use the Next.js 15 signature for dynamic routes: { params }: { params: Promise<{ id: string }> } and await params.
 - The code must compile without TypeScript errors.
 
-${FILE_FORMAT}
+${FILE_FORMAT}${tracking ? BACKEND_TRACKING_ADDENDUM : ""}${healthcare ? BACKEND_HEALTH_ADDENDUM(tracking) : ""}
 
 SRS:
 ${srs}`;
 
-export const databasePrompt = (srs: string) => `You are Agent 4, a senior database architect. Using ONLY section 5 (Data Model) of the SRS below, write the complete Prisma schema (prisma/schema.prisma) for PostgreSQL.
+export const databasePrompt = (srs: string, tracking = false, healthcare = false) => `You are Agent 4, a senior database architect. Using ONLY section 5 (Data Model) of the SRS below, write the complete Prisma schema (prisma/schema.prisma) for PostgreSQL.
 
 Rules:
 - Include: generator client { provider = "prisma-client-js" } and datasource db { provider = "postgresql"  url = env("DATABASE_URL") }.
 - Model and field names EXACTLY as in the SRS (the backend code uses them).
 - Every model: id String @id @default(cuid()), createdAt DateTime @default(now()), updatedAt DateTime @updatedAt (unless the SRS says otherwise).
 - Proper relations with onDelete behaviour, @@index on foreign keys and common filters, @unique where the SRS requires it, and enums for fixed value sets.
-- Return ONLY the schema code, no fences, no explanation.
+- Return ONLY the schema code, no fences, no explanation.${tracking ? DATABASE_TRACKING_ADDENDUM : ""}${healthcare ? DATABASE_HEALTH_ADDENDUM : ""}
 
 SRS:
 ${srs}`;
 
-export const qaPrompt = (srs: string, frontend: string, backend: string, schema: string) => `You are Agent 5, a senior security and QA engineer. Review the REAL generated code below against the SRS and write a Markdown report.
+export const qaPrompt = (srs: string, frontend: string, backend: string, schema: string, tracking = false, healthcare = false) => `You are Agent 5, a senior security and QA engineer. Review the REAL generated code below against the SRS and write a Markdown report.
 
 Sections:
 # QA & Security Report
@@ -90,7 +105,7 @@ Sections:
 ## 5. Fixes to apply first  (prioritised checklist)
 ## 6. Deployment checklist for Vercel  (env vars such as DATABASE_URL and SESSION_SECRET, prisma db push, build command, post-deploy smoke tests)
 
-Be specific and honest: only report what is actually in the code, and say so if something is fine. Do not invent files.
+Be specific and honest: only report what is actually in the code, and say so if something is fine. Do not invent files.${tracking ? QA_TRACKING_ADDENDUM : ""}${healthcare ? QA_HEALTH_ADDENDUM : ""}
 
 SRS:
 ${srs}

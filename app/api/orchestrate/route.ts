@@ -8,6 +8,8 @@ import { normalizeFiles } from "@/lib/files";
 import { failBuild, reconcileStaleBuilds } from "@/lib/builds";
 import { runStaticChecks } from "@/lib/checks";
 import { validateBackend, validateFrontend, validateSchema, validateSrs } from "@/lib/validate";
+import { isHealthcareIdea } from "@/lib/healthcare";
+import { addTrackingBackendFiles, addTrackingFrontendFiles, isTrackingIdea } from "@/lib/tracking";
 import { AiNotConfiguredError, AiUnavailableError, aiConfigured, generateText } from "@/lib/ai";
 import {
   srsPrompt,
@@ -86,7 +88,7 @@ export async function POST(req: Request) {
     const providersUsed: string[] = [];
 
     const callAI = async (systemPrompt: string) => {
-      // Tries Gemini first, then Claude / GPT / DeepSeek if it is down (see lib/ai.ts).
+      // Gemini only; temporary errors are retried inside lib/ai.ts.
       const result = await generateText(systemPrompt, { deadline });
       if (!providersUsed.includes(result.provider)) providersUsed.push(result.provider);
       let text = result.text.trim();
@@ -204,6 +206,8 @@ export async function POST(req: Request) {
     }
 
     const isFree = user.tier === "FREE";
+    const healthcare = isHealthcareIdea(prompt); // doctor / patient apps get privacy + role rules
+    const tracking = isTrackingIdea(prompt); // GPS / live-tracking apps get extra rules + a ready-made map
     const enc = new TextEncoder();
     let clientConnected = true;
 
@@ -260,23 +264,28 @@ export async function POST(req: Request) {
           let qa = `# Locked on Free Plan\nUpgrade to Standard (${STANDARD_PRICE_LABEL}) or higher to unlock the code and the QA report.`;
 
           // Agent 1: the SRS (its data model / API / pages sections are the contract for 2, 3, 4)
-          const spec = await runAgent("spec", srsPrompt(prompt), (t) => t, validateSrs);
+          const spec = await runAgent("spec", srsPrompt(prompt, tracking, healthcare), (t) => t, validateSrs);
 
           const frontendRun = () =>
-            runAgent("frontend", frontendPrompt(spec), (t) => normalizeFiles(t, "app/page.tsx"), validateFrontend);
+            runAgent("frontend", frontendPrompt(spec, tracking, healthcare), (t) => normalizeFiles(t, "app/page.tsx"), validateFrontend);
 
           if (isFree) {
             frontend = await frontendRun(); // free builds only need the UI for the Live Preview
+            if (tracking) frontend = addTrackingFrontendFiles(frontend);
           } else {
             // Agents 2, 3, 4 in parallel, all from the same SRS contract
             [frontend, backend, database] = await Promise.all([
               frontendRun(),
-              runAgent("backend", backendPrompt(spec), (t) => normalizeFiles(t, "app/api/route.ts"), validateBackend),
-              runAgent("database", databasePrompt(spec), (t) => t, validateSchema),
+              runAgent("backend", backendPrompt(spec, tracking, healthcare), (t) => normalizeFiles(t, "app/api/route.ts"), validateBackend),
+              runAgent("database", databasePrompt(spec, tracking, healthcare), (t) => t, validateSchema),
             ]);
+            if (tracking) {
+              frontend = addTrackingFrontendFiles(frontend);
+              backend = addTrackingBackendFiles(backend);
+            }
             // Agent 5 reviews the REAL code; code-level checks are added as facts
             event("qa", "start");
-            qa = await callAI(qaPrompt(spec, frontend, backend, database));
+            qa = await callAI(qaPrompt(spec, frontend, backend, database, tracking, healthcare));
             const checks = runStaticChecks(spec, frontend, backend, database);
             const warn = warnings.length
               ? `\n\n---\n## Output warnings\nThe agents' answers passed with these small problems:\n${warnings.map((w) => `- ${w}`).join("\n")}\n`
@@ -303,7 +312,7 @@ export async function POST(req: Request) {
             aiProviders: providersUsed,
           });
         } catch (genError) {
-          console.error("BUILD FAILED:", genError);
+          console.error("BUILD FAILED:", genError, genError instanceof AiUnavailableError ? genError.reason : "");
           void reportError(genError, { source: "server", route: "/api/orchestrate", method: "POST" });
           const message =
             genError instanceof AiUnavailableError
