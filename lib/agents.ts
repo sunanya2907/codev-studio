@@ -51,7 +51,7 @@ Aim for roughly 6 to 12 files, complete and working, not stubs.
 Rules:
 - Every file using hooks, state or events starts with "use client";.
 - Allowed imports ONLY: react, next/link, next/navigation, lucide-react, and your own files via "@/..." (for example "@/components/Navbar"). No other packages.
-- Modern, responsive dark UI with Tailwind classes, real labels and realistic copy. Include loading, empty and error states and working forms with validation.
+- Modern, responsive dark UI with Tailwind classes, real labels and realistic copy. It MUST work on every device: design mobile-first (works from 320px phones to wide desktops using sm:/md:/lg: classes), no horizontal scrolling, wrapping/stacking layouts, tap targets at least 44px, inputs with text-base (16px) so phones do not zoom, 100dvh instead of 100vh for full-screen areas, and both touch and mouse/keyboard input. Wrap every localStorage/sessionStorage access in try/catch (it can be blocked) and never let a storage error crash the page. Include loading, empty and error states and working forms with validation.
 - Navigate between pages with next/link and useRouter from next/navigation.
 - The backend may not be running when this is previewed: wrap every fetch in try/catch and, on failure, fall back to realistic in-memory demo data so every page is usable and interactive. Keep the real API calls in lib/api.ts.
 - The code must compile without TypeScript or JSX errors.

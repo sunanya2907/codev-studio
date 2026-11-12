@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import ErrorReporter from "@/components/ErrorReporter";
 import IconHelp from "@/components/IconHelp";
@@ -6,6 +6,12 @@ import IconHelp from "@/components/IconHelp";
 export const metadata: Metadata = {
   title: "Build_Core",
   description: "Multi-Agent Architecture with Live Interactive Preview",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

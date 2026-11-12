@@ -149,6 +149,9 @@ export default function EditorClient({
 }) {
   // Navigation & View States
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  useEffect(() => {
+    if (window.matchMedia("(max-width: 1023px)").matches) setSidebarOpen(false);
+  }, []);
   const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
   const [showPricingModal, setShowPricingModal] = useState(false);
   const [showDomainModal, setShowDomainModal] = useState(false);
@@ -667,12 +670,12 @@ export default function EditorClient({
   );
 
   return (
-    <div className="min-h-screen h-screen overflow-hidden bg-[#0B0F19] text-slate-100 flex font-sans select-none relative">
+    <div className="h-[100dvh] overflow-y-auto lg:overflow-hidden bg-[#0B0F19] text-slate-100 flex flex-col lg:flex-row font-sans select-none relative">
       {/* 1. LEFTMOST COLLAPSIBLE NAVIGATION & PLAN PROGRESS SIDEBAR */}
       <aside
         className={`${
-          sidebarOpen ? "w-64" : "w-16"
-        } transition-all duration-300 bg-[#070A12] border-r border-slate-800/80 flex flex-col justify-between shrink-0 z-20`}
+          sidebarOpen ? "lg:w-64 max-h-[75vh]" : "lg:w-16 max-h-16"
+        } w-full lg:max-h-none overflow-hidden transition-all duration-300 bg-[#070A12] border-b lg:border-b-0 lg:border-r border-slate-800/80 flex flex-col justify-between shrink-0 z-20`}
       >
         <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
           <div className="h-16 px-4 flex items-center justify-between border-b border-slate-800/80">
@@ -889,7 +892,7 @@ export default function EditorClient({
 
       {/* SLIDE-OUT HISTORY DRAWER */}
       {showHistoryDrawer && (
-        <div className="w-72 bg-[#0D1322] border-r border-slate-800 p-4 flex flex-col z-20 overflow-y-auto">
+        <div className="w-full lg:w-72 max-h-[60vh] lg:max-h-none bg-[#0D1322] border-b lg:border-b-0 lg:border-r border-slate-800 p-4 flex flex-col z-20 overflow-y-auto shrink-0">
           <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-800">
             <h3 className="text-sm font-bold flex items-center gap-2 text-cyan-300">
               <History className="w-4 h-4" /> Saved Generations
@@ -941,7 +944,7 @@ export default function EditorClient({
       )}
 
       {/* 2. SECOND COLUMN: PROMPT BOX + BUILD BUTTON + AGENT 1-5 STACK */}
-      <section className="w-80 bg-[#0E1424] border-r border-slate-800/80 flex flex-col justify-between p-4 shrink-0 overflow-y-auto">
+      <section className="w-full lg:w-80 bg-[#0E1424] border-b lg:border-b-0 lg:border-r border-slate-800/80 flex flex-col justify-between p-4 shrink-0 lg:overflow-y-auto">
         <div className="space-y-4">
           <div>
             <h2 className="text-lg font-extrabold tracking-tight text-white">
@@ -967,7 +970,7 @@ export default function EditorClient({
               rows={4}
               maxLength={500}
               placeholder="e.g. A task manager with PostgreSQL database, user auth, and analytics..."
-              className="select-text w-full bg-[#0B0F19] border border-slate-800/90 rounded-xl p-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-violet-500 resize-none"
+              className="select-text w-full bg-[#0B0F19] border border-slate-800/90 rounded-xl p-3 text-base sm:text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-violet-500 resize-none"
             />
 
             <div className="mt-3 flex items-stretch gap-2">
@@ -1005,8 +1008,8 @@ export default function EditorClient({
       </section>
 
       {/* 3. RIGHT MAIN WORKSPACE: TOP TABS + SINGLE AGENT STAGE / UNLOCK + BOTTOM BAR */}
-      <main className="flex-1 flex flex-col justify-between bg-[#0B0F19] overflow-hidden">
-        <header className="h-16 px-6 border-b border-slate-800/80 flex items-center justify-between bg-[#0E1424]/60 backdrop-blur">
+      <main className="w-full min-w-0 min-h-[100dvh] lg:min-h-0 lg:flex-1 flex flex-col justify-between bg-[#0B0F19] lg:overflow-hidden">
+        <header className="min-h-16 px-3 sm:px-6 py-2 gap-2 flex-wrap border-b border-slate-800/80 flex items-center justify-between bg-[#0E1424]/60 backdrop-blur">
           <div className="flex items-center gap-2 bg-[#090D16] p-1 rounded-xl border border-slate-800">
             <button
               onClick={() => setActiveTab("editor")}
@@ -1054,9 +1057,9 @@ export default function EditorClient({
         </header>
 
         {/* CENTER STAGE: Active Agent Header + Code/Preview or UNLOCK FOR ($9) Overlay */}
-        <div className="flex-1 p-6 overflow-hidden flex flex-col">
+        <div className="flex-1 min-h-[70vh] lg:min-h-0 p-3 sm:p-6 overflow-hidden flex flex-col">
           <div className="flex-1 rounded-2xl bg-[#111827] border border-slate-800/90 shadow-2xl flex flex-col overflow-hidden relative">
-            <div className="px-5 py-3.5 bg-[#0D1322] border-b border-slate-800 flex items-center justify-between">
+            <div className="px-3 sm:px-5 py-3.5 gap-2 flex-wrap bg-[#0D1322] border-b border-slate-800 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <span
                   className={`px-3 py-1 rounded-lg text-xs font-extrabold uppercase tracking-wider text-white bg-gradient-to-r ${currentAgent.badgeColor} shadow`}
@@ -1156,7 +1159,7 @@ export default function EditorClient({
         </div>
 
         {/* BOTTOM NAVIGATION & CUSTOMIZE BAR: [Back] [Next] [Customize Spec] */}
-        <footer className="h-20 px-6 border-t border-slate-800/80 bg-[#0E1424] flex items-center justify-between gap-4">
+        <footer className="min-h-20 px-3 sm:px-6 py-3 flex-wrap border-t border-slate-800/80 bg-[#0E1424] flex items-center justify-between gap-3 sm:gap-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <div className="flex items-center gap-3 shrink-0">
             <button
               onClick={() =>
@@ -1194,7 +1197,7 @@ export default function EditorClient({
                   ? `Code is locked on the Free Plan — upgrade for ${STANDARD_PRICE_LABEL} to edit...`
                   : currentAgent.placeholder
               }
-              className="select-text flex-1 bg-[#090D16] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-violet-500 disabled:opacity-50"
+              className="select-text flex-1 min-w-[10rem] bg-[#090D16] border border-slate-800 rounded-xl px-4 py-2.5 text-base sm:text-xs text-white placeholder-slate-500 focus:outline-none focus:border-violet-500 disabled:opacity-50"
             />
 
             <button
