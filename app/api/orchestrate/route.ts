@@ -84,7 +84,9 @@ export async function POST(req: Request) {
       );
 
     // Stop starting new provider attempts shortly before Vercel kills the function.
-    const deadline = Date.now() + (maxDuration - 15) * 1000;
+    // On Vercel the function is killed at maxDuration, so stop early there. On localhost there is no such limit,
+    // so give the whole 5-agent build 20 minutes (a full build here takes ~5 minutes).
+    const deadline = Date.now() + (process.env.VERCEL ? (maxDuration - 15) * 1000 : 20 * 60 * 1000);
     const providersUsed: string[] = [];
 
     const callAI = async (systemPrompt: string) => {

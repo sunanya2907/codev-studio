@@ -15,9 +15,14 @@ export class AiNotConfiguredError extends Error {
 
 export class AiUnavailableError extends Error {
   constructor(public attempts: AiAttempt[]) {
-    super("The AI service is temporarily unavailable. Please try again in a minute.");
-    // Real reason (e.g. "HTTP 429: quota exceeded") for logs / the debug agent; not shown to users.
-    this.reason = attempts.map((a) => a.error).filter(Boolean).join("; ");
+    const reason = attempts.map((a) => a.error).filter(Boolean).join("; ");
+    // In development the real Gemini reason is appended so it is visible in the popup too.
+    super(
+      "The AI service is temporarily unavailable. Please try again in a minute." +
+        (process.env.NODE_ENV !== "production" && reason ? ` [Dev: ${reason}]` : "")
+    );
+    // Real reason (e.g. "HTTP 429: quota exceeded") for logs / the debug agent.
+    this.reason = reason;
   }
   reason: string;
 }
@@ -38,15 +43,25 @@ export type GenerateOptions = {
 
 const RETRIES = 2; // extra tries on temporary Gemini errors (overload / rate limit / timeout)
 
+const modelChain = () => {
+  const primary = envOf("GEMINI_MODEL") || DEFAULT_MODEL;
+  const extra = (envOf("GEMINI_FALLBACK_MODELS") || "gemini-3.7-flash,gemini-3.5-flash")
+    .split(",").map((m) => m.trim()).filter(Boolean);
+  return [primary, ...extra.filter((m) => m !== primary)];
+};
+
 export async function generateText(prompt: string, opts: GenerateOptions = {}): Promise<AiResult> {
   const all: AiAttempt[] = [];
+  const models = modelChain();
   for (let i = 0; ; i++) {
+    // Retry 1 and 2 switch to the next model, so an overloaded / missing / quota-limited model does not kill the build.
+    const model = models[Math.min(i, models.length - 1)];
     try {
-      const r = await generateOnce(prompt, opts, all);
+      const r = await generateOnce(prompt, opts, all, model);
       return { ...r, attempts: all };
     } catch (err) {
       const last = err instanceof AiUnavailableError ? err : null;
-      const retryable = last && /HTTP (429|500|502|503|504)|overloaded|Empty response|fetch failed/i.test(last.reason);
+      const retryable = last && /HTTP (400|404|429|500|502|503|504)|overloaded|Empty response|fetch failed|Timed out|not found|max_output_tokens|maxOutputTokens/i.test(last.reason);
       const timeLeft = opts.deadline ? opts.deadline - Date.now() : Infinity;
       if (!retryable || i >= RETRIES || timeLeft < 15_000) {
         if (last) throw new AiUnavailableError(all);
@@ -57,11 +72,10 @@ export async function generateText(prompt: string, opts: GenerateOptions = {}): 
   }
 }
 
-async function generateOnce(prompt: string, opts: GenerateOptions, all: AiAttempt[]): Promise<AiResult> {
+async function generateOnce(prompt: string, opts: GenerateOptions, all: AiAttempt[], model: string): Promise<AiResult> {
   const key = envOf("GEMINI_API_KEY");
   if (!key) throw new AiNotConfiguredError();
 
-  const model = envOf("GEMINI_MODEL") || DEFAULT_MODEL;
   const maxTokens = Number(envOf("GEMINI_MAX_OUTPUT_TOKENS")) || DEFAULT_MAX_TOKENS;
   const attemptCap =
     opts.attemptTimeoutMs ?? (Number(envOf("AI_ATTEMPT_TIMEOUT_MS")) || 240_000);
@@ -69,7 +83,7 @@ async function generateOnce(prompt: string, opts: GenerateOptions, all: AiAttemp
   const remaining = opts.deadline ? opts.deadline - Date.now() : Infinity;
   const started = Date.now();
   const fail = (error: string): never => {
-    const a: AiAttempt = { provider: "gemini", ok: false, error, ms: Date.now() - started };
+    const a: AiAttempt = { provider: "gemini", ok: false, error: `[${model}] ${error}`, ms: Date.now() - started };
     all.push(a);
     console.error("GEMINI REQUEST FAILED:", JSON.stringify(a));
     throw new AiUnavailableError([a]);
@@ -94,7 +108,7 @@ async function generateOnce(prompt: string, opts: GenerateOptions, all: AiAttemp
     );
     const data: any = await res.json().catch(() => ({}));
     if (!res.ok) {
-      return fail(String(data?.error?.message || `HTTP ${res.status}`).slice(0, 300));
+      return fail(`HTTP ${res.status}: ${String(data?.error?.message || "").slice(0, 280)}`);
     }
     if (data?.promptFeedback?.blockReason) {
       return fail(`Blocked: ${data.promptFeedback.blockReason}`);
