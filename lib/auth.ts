@@ -37,7 +37,8 @@ const adapter: Adapter = {
         throw new Error("ACCOUNT_MISMATCH: this Google account belongs to a different user");
       }
     }
-    return baseAdapter.linkAccount!(account);
+    await baseAdapter.linkAccount!(account);
+    return account;
   },
 };
 
