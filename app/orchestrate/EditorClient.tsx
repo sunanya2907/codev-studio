@@ -51,6 +51,8 @@ import {
   Crown,
   FileText,
   Globe,
+  Wand2,
+  MessageSquarePlus,
 } from "lucide-react";
 
 interface HistoryItem {
@@ -192,6 +194,8 @@ export default function EditorClient({
     qa: `# Security & Deployment Audit (Agent 5)\n- [x] Environment variables isolated\n- [x] Prisma SQL injection protection verified\n- [x] NextAuth session middleware active\n- [x] Ready for zero-config Vercel production build`,
   });
 
+  const initialBuffers = React.useRef(buffers);
+
   const [historyList, setHistoryList] = useState<HistoryItem[]>([]);
   // The saved generation currently open in the editor; edits are saved back to it.
   const [currentHistoryId, setCurrentHistoryId] = useState<string | null>(null);
@@ -209,6 +213,46 @@ export default function EditorClient({
         item.qa ||
         "# Agent 5 QA Report\n\nNo QA report was saved for this generation.",
     }));
+  };
+
+  // NEW CHAT: clear the idea, the generated code and the open history item, back to a blank start.
+  const handleNewChat = () => {
+    if (isGenerating || isBuilding) return; // never throw away a build that is running
+    setPrompt("");
+    setCustomInstruction("");
+    setBuffers(initialBuffers.current);
+    setCurrentHistoryId(null);
+    setAgentStatus(IDLE_STATUSES);
+    setActiveAgentIndex(0);
+    setActiveTab("editor");
+    setBuildQuestions(null);
+    setShowHistoryDrawer(false);
+    if (typeof window !== "undefined" && window.matchMedia("(max-width: 1023px)").matches) {
+      setSidebarOpen(false);
+    }
+  };
+
+  // ENHANCE PROMPT: the AI rewrites the idea into a fuller request (free, no token).
+  const [isEnhancing, setIsEnhancing] = useState(false);
+  const handleEnhancePrompt = async () => {
+    if (!prompt.trim() || isEnhancing || isGenerating) return;
+    setIsEnhancing(true);
+    try {
+      const res = await fetch("/api/enhance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || typeof data?.prompt !== "string") {
+        throw new Error(data?.error || "Could not enhance the prompt. Please try again.");
+      }
+      setPrompt(data.prompt.slice(0, 500));
+    } catch (err: any) {
+      alert(err.message || "Could not enhance the prompt.");
+    } finally {
+      setIsEnhancing(false);
+    }
   };
 
   const maxTokensForPlan = TIER_TOKENS[tier];
@@ -702,6 +746,16 @@ export default function EditorClient({
 
           <nav className="p-3 space-y-1.5">
             <button
+              onClick={handleNewChat}
+              disabled={isGenerating || isBuilding}
+              title="Start a new chat"
+              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[11px] font-bold text-white bg-gradient-to-r from-violet-600/80 to-cyan-500/80 hover:brightness-110 disabled:opacity-50 transition"
+            >
+              <MessageSquarePlus className="w-3.5 h-3.5 shrink-0" />
+              {sidebarOpen && <span>New Chat</span>}
+            </button>
+
+            <button
               onClick={() => setShowHistoryDrawer(false)}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition ${
                 !showHistoryDrawer
@@ -977,16 +1031,28 @@ export default function EditorClient({
               <button
                 onClick={handleBuildApp}
                 disabled={isGenerating || isAsking}
-                className="flex-1 py-3 rounded-xl font-bold text-xs uppercase tracking-wider text-white bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-500 hover:brightness-110 active:scale-[0.99] transition shadow-lg shadow-violet-600/30 flex items-center justify-center gap-2 disabled:opacity-50"
+                className="flex-1 min-w-0 h-10 whitespace-nowrap rounded-lg font-bold text-[11px] uppercase tracking-wide text-white bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-500 hover:brightness-110 active:scale-[0.99] transition shadow-lg shadow-violet-600/30 flex items-center justify-center gap-2 disabled:opacity-50"
               >
-                <Sparkles className="w-4 h-4" />
+                <Sparkles className="w-3.5 h-3.5 shrink-0" />
                 {isAsking
                   ? "Preparing questions..."
                   : isGenerating
                   ? "Orchestrating Agents..."
                   : tokenBalance > 0
                   ? "Build App (1 Token)"
-                  : "Out of Tokens — Top Up ($1)"}
+                  : "Top Up Tokens ($1)"}
+              </button>
+
+              {/* Enhance prompt: the AI rewrites the idea into a fuller one (free) */}
+              <button
+                type="button"
+                onClick={handleEnhancePrompt}
+                disabled={!prompt.trim() || isEnhancing || isGenerating || isAsking}
+                title="Enhance prompt with AI (free)"
+                aria-label="Enhance prompt with AI"
+                className="shrink-0 w-9 rounded-lg bg-[#1F1F1F] hover:bg-[#2B2B2B] border border-white/10 text-amber-300 transition active:scale-95 flex items-center justify-center disabled:opacity-40"
+              >
+                <Wand2 className={`w-4 h-4 ${isEnhancing ? "animate-pulse" : ""}`} strokeWidth={1.75} />
               </button>
 
               {/* Talk to build: icon-only mic button */}
@@ -998,9 +1064,9 @@ export default function EditorClient({
                 }}
                 title={`Talk to build · ${VOICE_PRICE_LABEL} (${VOICE_TOKEN_LABEL})`}
                 aria-label={`Talk to build · ${VOICE_PRICE_LABEL} (${VOICE_TOKEN_LABEL})`}
-                className="shrink-0 w-11 rounded-xl bg-[#1F1F1F] hover:bg-[#2B2B2B] border border-white/10 text-white transition active:scale-95 flex items-center justify-center"
+                className="shrink-0 w-9 rounded-lg bg-[#1F1F1F] hover:bg-[#2B2B2B] border border-white/10 text-white transition active:scale-95 flex items-center justify-center"
               >
-                <Mic className="w-5 h-5" strokeWidth={1.75} />
+                <Mic className="w-4 h-4" strokeWidth={1.75} />
               </button>
             </div>
           </div>
@@ -1204,9 +1270,9 @@ export default function EditorClient({
               onClick={openVoiceEdit}
               title={`Talk to edit · ${VOICE_PRICE_LABEL} (${VOICE_TOKEN_LABEL})`}
               aria-label="Talk to edit"
-              className="p-2.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 transition shrink-0"
+              className="p-2 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 transition shrink-0"
             >
-              <Mic className="w-4 h-4" />
+              <Mic className="w-3.5 h-3.5" />
             </button>
 
             <button
