@@ -4,4 +4,5 @@ const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
 
 export const db = globalForPrisma.prisma || new PrismaClient();
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = db;
+// Reuse the same client everywhere (also in production) so every request does not open new DB connections.
+globalForPrisma.prisma = db;

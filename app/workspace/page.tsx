@@ -2,6 +2,8 @@ import { auth, signOut } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 
+export const dynamic = "force-dynamic"; // always the account that is signed in right now
+
 export default async function WorkspacePage() {
   const session = await auth();
 
@@ -38,7 +40,7 @@ export default async function WorkspacePage() {
             type="submit"
             className="text-xs text-neutral-400 hover:text-white underline underline-offset-4 transition"
           >
-            Sign out
+            Not you? Sign out and use another account
           </button>
         </form>
       </div>

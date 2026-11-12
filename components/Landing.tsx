@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { signIn } from "next-auth/react";
+import { signIn, signOut } from "next-auth/react";
 import {
   ArrowRight,
   Check,
@@ -28,7 +28,8 @@ const AUTH_ERRORS: Record<string, string> = {
   OAuthAccountNotLinked:
     "This email is already registered with a different sign-in method. Please sign in the way you first signed up.",
   AccessDenied: "Access denied.",
-  Configuration: "Sign-in is temporarily unavailable because of a server configuration problem. Please try again later.",
+  SessionExpired: "Your session has expired. Please sign in again.",
+  Configuration: "Sign-in could not be completed. If you were already signed in with another account, use \"Use another account\" first, then try again.",
 };
 const friendlyError = (code?: string | null) => (code && AUTH_ERRORS[code]) || "Sign-in failed. Please try again.";
 
@@ -135,6 +136,20 @@ function LiveBuildMock() {
 }
 
 export default function Landing({ builds }: { builds: number | null }) {
+  // Who is signed in on this browser right now (so a leftover login is never a surprise).
+  const [current, setCurrent] = useState<{ name?: string | null; email?: string | null } | null>(null);
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/auth/session", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (alive) setCurrent(d?.user ?? null);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
   const [accepted, setAccepted] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -153,6 +168,10 @@ export default function Landing({ builds }: { builds: number | null }) {
     setLoading(true);
     setError(null);
     try {
+      try {
+        await signOut({ redirect: false });
+                    await fetch("/api/auth-clear", { method: "POST", cache: "no-store" });
+      } catch {}
       const res = await signIn("credentials", {
         email: email.trim().toLowerCase(),
         password,
@@ -348,6 +367,33 @@ export default function Landing({ builds }: { builds: number | null }) {
         <Reveal>
           <div className="mx-auto max-w-md">
             <div className="bc-card-glow rounded-3xl bg-neutral-900/90 p-8 shadow-2xl backdrop-blur">
+              {current?.email && (
+                <div className="mb-5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-left text-xs text-emerald-100">
+                  <p className="mb-2">
+                    Signed in as <span className="font-bold">{current.name || current.email}</span>
+                    <span className="block text-emerald-300/80">{current.email}</span>
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <Link href="/workspace" className="rounded-lg bg-emerald-500 px-3 py-1.5 font-bold text-neutral-950 hover:brightness-110">
+                      Continue
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          await signOut({ redirect: false });
+                    await fetch("/api/auth-clear", { method: "POST", cache: "no-store" });
+                        } catch {}
+                        setCurrent(null);
+                      }}
+                      className="rounded-lg border border-emerald-500/40 px-3 py-1.5 font-semibold hover:bg-emerald-500/10"
+                    >
+                      Use another account
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <h2 className="mb-1 text-xl font-bold">Get started</h2>
               <p className="mb-6 text-xs text-neutral-400">Create an account or sign in to build your apps.</p>
 
@@ -376,7 +422,14 @@ export default function Landing({ builds }: { builds: number | null }) {
               <button
                 type="button"
                 disabled={!accepted}
-                onClick={() => signIn("google", { callbackUrl: "/workspace" })}
+                onClick={async () => {
+                  // Drop any previous login first, so the account chosen now always replaces it.
+                  try {
+                    await signOut({ redirect: false });
+                    await fetch("/api/auth-clear", { method: "POST", cache: "no-store" });
+                  } catch {}
+                  signIn("google", { callbackUrl: "/workspace" });
+                }}
                 className={`mb-4 flex w-full items-center justify-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold shadow transition-all ${
                   accepted ? "cursor-pointer bg-white text-neutral-900 hover:bg-neutral-100" : "cursor-not-allowed bg-neutral-800 text-neutral-500 opacity-60"
                 }`}

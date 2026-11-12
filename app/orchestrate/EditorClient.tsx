@@ -2,6 +2,9 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
+import { signOut } from "next-auth/react";
+import { useRouter } from "next/navigation";
+import ProfileModal, { Avatar, type Profile } from "@/components/ProfileModal";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
 import { buildPreviewHtml } from "@/lib/preview";
@@ -52,6 +55,7 @@ import {
   FileText,
   Globe,
   Wand2,
+  LogOut,
   MessageSquarePlus,
 } from "lucide-react";
 
@@ -146,8 +150,12 @@ async function readJson(res: Response) {
 
 export default function EditorClient({
   userName = "Developer",
+  userEmail = "",
+  userImage = null,
 }: {
   userName?: string;
+  userEmail?: string;
+  userImage?: string | null;
 }) {
   // Navigation & View States
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -163,6 +171,14 @@ export default function EditorClient({
   // Plan & Token States
   const [tier, setTier] = useState<"FREE" | "STANDARD" | "PRO" | "EXCLUSIVE">("FREE");
   const [tokenBalance, setTokenBalance] = useState<number>(3);
+  const router = useRouter();
+  const [profile, setProfile] = useState<Profile>({ name: userName, email: userEmail, image: userImage });
+  const [showProfile, setShowProfile] = useState(false);
+  useEffect(() => {
+    // the server sent a newer profile (after router.refresh): follow it
+    setProfile({ name: userName, email: userEmail, image: userImage });
+  }, [userName, userEmail, userImage]);
+  const [billingReady, setBillingReady] = useState(false); // true once the real plan + tokens came from the server
   const [extraTokensCount, setExtraTokensCount] = useState<number>(5);
   const [billingLoading, setBillingLoading] = useState<string | null>(null);
   const [provider, setProvider] = useState<PaymentProvider>("razorpay");
@@ -272,26 +288,27 @@ export default function EditorClient({
       window.history.replaceState(null, "", window.location.pathname);
     }
     fetchBillingStatus();
-    fetchHistory(true); // true => reopen the most recent project after a refresh
+    fetchHistory(false, true); // start on a NEW chat; only follow a build that is still running
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchBillingStatus = async () => {
     try {
-      const res = await fetch("/api/billing");
+      const res = await fetch("/api/billing", { cache: "no-store" });
       if (res.ok) {
         const data = await res.json();
         if (data.tier) setTier(data.tier);
         if (typeof data.tokenBalance === "number") {
           setTokenBalance(data.tokenBalance);
         }
+        setBillingReady(true);
       }
     } catch (e) {}
   };
 
-  const fetchHistory = async (restoreLatest = false) => {
+  const fetchHistory = async (restoreLatest = false, resumeRunning = false) => {
     try {
-      const res = await fetch("/api/history");
+      const res = await fetch("/api/history", { cache: "no-store" });
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data.history)) {
@@ -300,7 +317,7 @@ export default function EditorClient({
           if (restoreLatest && finished) openHistoryItem(finished);
           // A build is still running on the server (tab was closed or refreshed): follow it.
           const running = data.history.find((h: HistoryItem) => h.status === "BUILDING");
-          if (restoreLatest && running) watchRunningBuild(new Date(running.createdAt).getTime());
+          if ((restoreLatest || resumeRunning) && running) watchRunningBuild(new Date(running.createdAt).getTime());
         }
       }
     } catch (e) {}
@@ -317,7 +334,7 @@ export default function EditorClient({
     try {
       for (let i = 0; i < 120; i++) {
         await new Promise((r) => setTimeout(r, 4000));
-        const res = await fetch("/api/history?light=1").catch(() => null);
+        const res = await fetch("/api/history?light=1", { cache: "no-store" }).catch(() => null);
         if (!res || !res.ok) continue;
         const data = await res.json();
         const latest = Array.isArray(data.history) ? data.history[0] : null;
@@ -408,7 +425,7 @@ export default function EditorClient({
   const [isAsking, setIsAsking] = useState(false);
 
   const handleBuildApp = async () => {
-    if (!prompt.trim() || isAsking) return;
+    if (!prompt.trim() || isAsking || !billingReady) return;
 
     if (tokenBalance <= 0) {
       setShowPricingModal(true);
@@ -1030,11 +1047,13 @@ export default function EditorClient({
             <div className="mt-3 flex items-stretch gap-2">
               <button
                 onClick={handleBuildApp}
-                disabled={isGenerating || isAsking}
+                disabled={isGenerating || isAsking || !billingReady}
                 className="flex-1 min-w-0 h-10 whitespace-nowrap rounded-lg font-bold text-[11px] uppercase tracking-wide text-white bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-500 hover:brightness-110 active:scale-[0.99] transition shadow-lg shadow-violet-600/30 flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 <Sparkles className="w-3.5 h-3.5 shrink-0" />
-                {isAsking
+                {!billingReady
+                  ? "Loading..."
+                  : isAsking
                   ? "Preparing questions..."
                   : isGenerating
                   ? "Orchestrating Agents..."
@@ -1111,14 +1130,26 @@ export default function EditorClient({
               Export ZIP
             </button>
 
-            <div className="hidden sm:flex items-center gap-2 pl-2 border-l border-slate-800 text-xs text-slate-300">
-              <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-violet-600 to-cyan-500 flex items-center justify-center font-bold text-white text-xs">
-                {userName.charAt(0).toUpperCase()}
-              </div>
-              <span className="font-medium truncate max-w-[120px]">
-                {userName}
+            <button
+              onClick={() => signOut({ callbackUrl: "/" })}
+              title="Sign out"
+              aria-label="Sign out"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 text-xs font-bold transition"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Sign out</span>
+            </button>
+
+            <button
+              onClick={() => setShowProfile(true)}
+              title="Edit your profile"
+              className="flex items-center gap-2 pl-2 sm:border-l border-slate-800 text-xs text-slate-300 hover:text-white transition"
+            >
+              <Avatar name={profile.name} image={profile.image} size={28} />
+              <span className="hidden sm:inline font-medium truncate max-w-[120px]">
+                {profile.name}
               </span>
-            </div>
+            </button>
           </div>
         </header>
 
@@ -1291,6 +1322,17 @@ export default function EditorClient({
           </div>
         </footer>
       </main>
+
+      <ProfileModal
+        key={showProfile ? "open" : "closed"}
+        open={showProfile}
+        profile={profile}
+        onClose={() => setShowProfile(false)}
+        onSaved={(p) => {
+          setProfile(p);
+          router.refresh(); // every server page / API now sees the new name and photo
+        }}
+      />
 
       <BuildQuestions
         open={!!buildQuestions}

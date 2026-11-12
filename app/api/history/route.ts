@@ -5,6 +5,7 @@ import { reconcileStaleBuilds } from "@/lib/builds";
 import { STANDARD_PRICE_LABEL } from "@/lib/plans";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+export const dynamic = "force-dynamic"; // per-user data: never cached
 export async function GET(request: Request) {
   try {
     const session = await auth();

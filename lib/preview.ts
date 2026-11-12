@@ -21,6 +21,45 @@ const REACT_DOM_URL = "https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/u
 const BABEL_URL = "https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.26.4/babel.min.js";
 const TAILWIND_URL = "https://cdn.tailwindcss.com/3.4.16";
 
+
+/**
+ * The preview iframe has no same-origin access, so the browser throws a SecurityError the moment a
+ * generated app touches localStorage / sessionStorage / document.cookie (that was the
+ * "The document is sandboxed and lacks the allow-same-origin flag" crash). This shim runs FIRST and
+ * swaps in in-memory versions, so those apps run normally (data lasts until the preview reloads).
+ */
+const STORAGE_SHIM = `(function () {
+  function makeStore() {
+    var data = {};
+    return {
+      get length() { return Object.keys(data).length; },
+      key: function (i) { return Object.keys(data)[i] || null; },
+      getItem: function (k) { k = String(k); return Object.prototype.hasOwnProperty.call(data, k) ? data[k] : null; },
+      setItem: function (k, v) { data[String(k)] = String(v); },
+      removeItem: function (k) { delete data[String(k)]; },
+      clear: function () { data = {}; }
+    };
+  }
+  ["localStorage", "sessionStorage"].forEach(function (name) {
+    var ok = false;
+    try { ok = !!window[name]; } catch (e) { ok = false; }
+    if (ok) return;
+    try { Object.defineProperty(window, name, { value: makeStore(), configurable: true }); } catch (e) {}
+  });
+  var cookieOk = true;
+  try { void document.cookie; } catch (e) { cookieOk = false; }
+  if (!cookieOk) {
+    var jar = {};
+    try {
+      Object.defineProperty(document, "cookie", {
+        configurable: true,
+        get: function () { return Object.keys(jar).map(function (k) { return k + "=" + jar[k]; }).join("; "); },
+        set: function (v) { var p = String(v).split(";")[0], i = p.indexOf("="); if (i > 0) jar[p.slice(0, i).trim()] = p.slice(i + 1).trim(); }
+      });
+    } catch (e) {}
+  }
+})();`;
+
 /** JSON that is safe to embed inside an inline <script> block. */
 function toScriptJson(value: unknown): string {
   return JSON.stringify(value)
@@ -326,6 +365,7 @@ export function buildPreviewHtml(frontendCode: string): string {
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta http-equiv="Content-Security-Policy" content="${csp}" />
+    <script>${STORAGE_SHIM}</script>
     <script src="${TAILWIND_URL}"></script>
     <style>
       html, body { margin: 0; min-height: 100%; background: #090d16; color: #fff; font-family: system-ui, sans-serif; }

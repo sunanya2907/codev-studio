@@ -24,6 +24,7 @@ function demoBillingEnabled() {
   );
 }
 
+export const dynamic = "force-dynamic"; // per-user data: never cached
 export async function GET() {
   try {
     const session = await auth();
