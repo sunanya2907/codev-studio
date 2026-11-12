@@ -926,16 +926,6 @@ export default function EditorClient({
                 {prompt.length}/500
               </span>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                setVoiceMode("build");
-                setShowVoice(true);
-              }}
-              className="mb-2 w-full py-2 rounded-xl text-[11px] font-bold text-cyan-300 bg-cyan-500/10 border border-cyan-500/30 hover:bg-cyan-500/20 transition flex items-center justify-center gap-1.5"
-            >
-              <Mic className="w-3.5 h-3.5" /> Talk to build · {VOICE_PRICE_LABEL} ({VOICE_TOKEN_LABEL})
-            </button>
             <textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
@@ -945,18 +935,34 @@ export default function EditorClient({
               className="select-text w-full bg-[#0B0F19] border border-slate-800/90 rounded-xl p-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-violet-500 resize-none"
             />
 
-            <button
-              onClick={handleBuildApp}
-              disabled={isGenerating}
-              className="mt-3 w-full py-3 rounded-xl font-bold text-xs uppercase tracking-wider text-white bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-500 hover:brightness-110 active:scale-[0.99] transition shadow-lg shadow-violet-600/30 flex items-center justify-center gap-2 disabled:opacity-50"
-            >
-              <Sparkles className="w-4 h-4" />
-              {isGenerating
-                ? "Orchestrating Agents..."
-                : tokenBalance > 0
-                ? "Build App (1 Token)"
-                : "Out of Tokens — Top Up ($1)"}
-            </button>
+            <div className="mt-3 flex items-stretch gap-2">
+              <button
+                onClick={handleBuildApp}
+                disabled={isGenerating}
+                className="flex-1 py-3 rounded-xl font-bold text-xs uppercase tracking-wider text-white bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-500 hover:brightness-110 active:scale-[0.99] transition shadow-lg shadow-violet-600/30 flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                <Sparkles className="w-4 h-4" />
+                {isGenerating
+                  ? "Orchestrating Agents..."
+                  : tokenBalance > 0
+                  ? "Build App (1 Token)"
+                  : "Out of Tokens — Top Up ($1)"}
+              </button>
+
+              {/* Talk to build: icon-only mic button */}
+              <button
+                type="button"
+                onClick={() => {
+                  setVoiceMode("build");
+                  setShowVoice(true);
+                }}
+                title={`Talk to build · ${VOICE_PRICE_LABEL} (${VOICE_TOKEN_LABEL})`}
+                aria-label={`Talk to build · ${VOICE_PRICE_LABEL} (${VOICE_TOKEN_LABEL})`}
+                className="shrink-0 w-11 rounded-xl bg-[#1F1F1F] hover:bg-[#2B2B2B] border border-white/10 text-white transition active:scale-95 flex items-center justify-center"
+              >
+                <Mic className="w-5 h-5" strokeWidth={1.75} />
+              </button>
+            </div>
           </div>
         </div>
       </section>
