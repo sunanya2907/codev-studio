@@ -29,7 +29,7 @@ export const maxDuration = 300;
 // The AI provider (Gemini only) lives in lib/ai.ts.
 // The model name is env-configurable there (GEMINI_MODEL).
 
-const MAX_PROMPT_LENGTH = 500; // matches the "x/500" counter in the editor
+const MAX_PROMPT_LENGTH = 1500; // idea (max 500 in the editor) + the answers to the 3 questions
 const MAX_INSTRUCTION_LENGTH = 1000;
 const MAX_CODE_LENGTH = 150000; // multi-file modules are bigger than the old single files
 

@@ -22,6 +22,7 @@ import { PLAN_DETAILS } from "@/lib/plan-details";
 import BuildProgress, { IDLE_STATUSES, type AgentStatuses } from "@/components/BuildProgress";
 import VoiceBuilder, { type ApplyResult } from "@/components/VoiceBuilder";
 import DomainSearch from "@/components/DomainSearch";
+import BuildQuestions, { type BuildQuestion } from "@/components/BuildQuestions";
 import type { PaymentProvider } from "@/lib/plans";
 import {
   Menu,
@@ -355,13 +356,47 @@ export default function EditorClient({
   };
 
   // Full App Build Handler (Enforces Token Deduction & Free Plan Visibility)
+  // Step 1: ask 3 questions about the idea (free), then build with the answers.
+  const [buildQuestions, setBuildQuestions] = useState<BuildQuestion[] | null>(null);
+  const [isAsking, setIsAsking] = useState(false);
+
   const handleBuildApp = async () => {
-    if (!prompt.trim()) return;
+    if (!prompt.trim() || isAsking) return;
 
     if (tokenBalance <= 0) {
       setShowPricingModal(true);
       return;
     }
+
+    setIsAsking(true);
+    try {
+      const res = await fetch("/api/clarify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt }),
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && Array.isArray(data?.questions) && data.questions.length > 0) {
+        setBuildQuestions(data.questions);
+        return;
+      }
+    } catch {
+      // fall through: build straight from the idea
+    } finally {
+      setIsAsking(false);
+    }
+    runBuild(prompt);
+  };
+
+  // Step 2: the person answered (or skipped): build with the idea plus the answers.
+  const handleAnswersSubmit = (answers: { question: string; answer: string }[]) => {
+    setBuildQuestions(null);
+    const extra = answers.map((a) => `${a.question} ${a.answer}`).join(" | ");
+    runBuild(extra ? `${prompt.trim()}\n\nUser needs: ${extra}` : prompt);
+  };
+
+  const runBuild = async (finalPrompt: string) => {
+    if (!finalPrompt.trim()) return;
 
     setIsGenerating(true);
     setIsBuilding(true);
@@ -373,7 +408,7 @@ export default function EditorClient({
       const res = await fetch("/api/orchestrate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify({ prompt: finalPrompt }),
       });
 
       let data: any;
@@ -938,11 +973,13 @@ export default function EditorClient({
             <div className="mt-3 flex items-stretch gap-2">
               <button
                 onClick={handleBuildApp}
-                disabled={isGenerating}
+                disabled={isGenerating || isAsking}
                 className="flex-1 py-3 rounded-xl font-bold text-xs uppercase tracking-wider text-white bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-500 hover:brightness-110 active:scale-[0.99] transition shadow-lg shadow-violet-600/30 flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 <Sparkles className="w-4 h-4" />
-                {isGenerating
+                {isAsking
+                  ? "Preparing questions..."
+                  : isGenerating
                   ? "Orchestrating Agents..."
                   : tokenBalance > 0
                   ? "Build App (1 Token)"
@@ -1185,6 +1222,14 @@ export default function EditorClient({
           </div>
         </footer>
       </main>
+
+      <BuildQuestions
+        open={!!buildQuestions}
+        idea={prompt}
+        questions={buildQuestions || []}
+        onCancel={() => setBuildQuestions(null)}
+        onSubmit={handleAnswersSubmit}
+      />
 
       <VoiceBuilder
         key={voiceMode}
