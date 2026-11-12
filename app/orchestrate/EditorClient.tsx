@@ -997,27 +997,6 @@ export default function EditorClient({
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Token No + Instant $1 Top-Up Trigger */}
-            <button
-              onClick={() => setShowPricingModal(true)}
-              className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-bold transition"
-            >
-              <Coins className="w-4 h-4 text-amber-400" />
-              <span>Token No: {tokenBalance}</span>
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-400/20 text-amber-200">
-                + $1 Top Up
-              </span>
-            </button>
-
-            <button
-              onClick={openVoiceEdit}
-              title={`Change your app by talking · ${VOICE_PRICE_LABEL} (${VOICE_TOKEN_LABEL})`}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 text-xs font-bold transition"
-            >
-              <Mic className="w-3.5 h-3.5" />
-              Talk to edit
-            </button>
-
             <button
               onClick={handleExportZip}
               className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 text-xs font-bold transition"
@@ -1180,6 +1159,15 @@ export default function EditorClient({
               }
               className="select-text flex-1 bg-[#090D16] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-violet-500 disabled:opacity-50"
             />
+
+            <button
+              onClick={openVoiceEdit}
+              title={`Talk to edit · ${VOICE_PRICE_LABEL} (${VOICE_TOKEN_LABEL})`}
+              aria-label="Talk to edit"
+              className="p-2.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 transition shrink-0"
+            >
+              <Mic className="w-4 h-4" />
+            </button>
 
             <button
               onClick={handleCustomizeAgent}
