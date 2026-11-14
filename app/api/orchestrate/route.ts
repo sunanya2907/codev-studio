@@ -8,10 +8,12 @@ import { normalizeFiles } from "@/lib/files";
 import { failBuild, reconcileStaleBuilds } from "@/lib/builds";
 import { qaPendingText } from "@/lib/qa-review";
 import { validateBackend, validateFrontend, validateSchema, validateSrs } from "@/lib/validate";
+import { mergeContract, validateContract } from "@/lib/contract";
 import { isHealthcareIdea } from "@/lib/healthcare";
 import { addTrackingBackendFiles, addTrackingFrontendFiles, isTrackingIdea } from "@/lib/tracking";
 import { AiNotConfiguredError, AiUnavailableError, aiConfigured, generateText, type GenerateOptions } from "@/lib/ai";
 import {
+  contractPrompt,
   srsPrompt,
   frontendPrompt,
   backendPrompt,
@@ -231,9 +233,10 @@ export async function POST(req: Request) {
           key: AgentKey,
           basePrompt: string,
           clean: (t: string) => string,
-          validate: (t: string) => string[]
+          validate: (t: string) => string[],
+          emitStart = true
         ): Promise<string> => {
-          event(key, "start");
+          if (emitStart) event(key, "start");
           const t0 = Date.now();
           let text = clean(await callAI(basePrompt));
           let issues = validate(text);
@@ -267,23 +270,65 @@ export async function POST(req: Request) {
           let database = LOCKED;
           let qa = `# Locked on Free Plan\nUpgrade to Standard (${STANDARD_PRICE_LABEL}) or higher to unlock the code and the QA report.`;
 
-          // Agent 1: the SRS (its data model / API / pages sections are the contract for 2, 3, 4)
-          const spec = await runAgent("spec", srsPrompt(prompt, tracking, healthcare), (t) => t, validateSrs);
+          // Agent 1, step 1 (about 15 to 20 seconds): ONLY the contract (SRS sections 5, 6, 7). Agents 2, 3 and 4
+          // start from it immediately, in parallel with the writing of the full SRS (step 2), instead of waiting
+          // 60 to 80 seconds for the whole document.
+          event("spec", "start");
+          const contractBase = contractPrompt(prompt, tracking, healthcare);
+          let contract = await callAI(contractBase);
+          let contractIssues = validateContract(contract);
+          if (contractIssues.length) {
+            event("spec", "retry");
+            const again = await callAI(`${contractBase}\n\nYOUR PREVIOUS ANSWER HAD THESE PROBLEMS. Fix all of them and return the COMPLETE corrected answer:\n- ${contractIssues.join("\n- ")}`);
+            const again2 = validateContract(again);
+            if (again2.length <= contractIssues.length) {
+              contract = again;
+              contractIssues = again2;
+            }
+          }
+          if (contractIssues.length) {
+            throw new Error(`Agent 1 could not produce a usable contract (${contractIssues[0]}). Please try again.`);
+          }
+          console.log("BUILD TIMING", JSON.stringify({ buildId, agent: "contract", seconds: Math.round((Date.now() - buildStartedAt) / 1000) }));
 
+          // A big frontend (6 to 12 files) can take 200+ seconds to write, longer than Vercel's 300 second limit
+          // leaves on the Hobby plan. So ask for a compact frontend for Live Preview builds, and whenever less than
+          // ~300 seconds are left (always the case on Hobby). Local runs and a Pro plan with a longer limit keep the full size.
+          const compactFrontend = isFree || (!!process.env.VERCEL && deadline - Date.now() < 300_000);
+          console.log("FRONTEND SIZE", JSON.stringify({ buildId, compact: compactFrontend, secondsLeft: Math.round((deadline - Date.now()) / 1000) }));
           const frontendRun = () =>
-            runAgent("frontend", frontendPrompt(spec, tracking, healthcare), (t) => normalizeFiles(t, "app/page.tsx"), validateFrontend);
+            runAgent("frontend", frontendPrompt(contract, tracking, healthcare, compactFrontend), (t) => normalizeFiles(t, "app/page.tsx"), validateFrontend);
 
+          // Agent 1, step 2: the full SRS document, written to match the contract. If this step fails, the build still
+          // succeeds and the contract is saved as the SRS, because the code does not depend on the rest of the document.
+          const specRun = async (): Promise<string> => {
+            try {
+              const full = await runAgent("spec", srsPrompt(prompt, tracking, healthcare, contract), (t) => t, validateSrs, false);
+              return mergeContract(full, contract);
+            } catch (e) {
+              if (e instanceof AiNotConfiguredError) throw e;
+              console.error("FULL SRS FAILED, saving the contract as the SRS:", e instanceof AiUnavailableError ? e.reason : e);
+              warnings.push("Agent 1: the full requirements document could not be written this time; only the data model, API and pages (the contract the code was built from) are saved.");
+              event("spec", "done");
+              return contract;
+            }
+          };
+
+          let spec = contract;
           if (isFree) {
-            frontend = await frontendRun(); // free builds only need the UI for the Live Preview
+            // Free builds only need the UI for the Live Preview (the SRS is locked), so the contract is enough.
+            event("spec", "done");
+            frontend = await frontendRun();
             if (tracking) frontend = addTrackingFrontendFiles(frontend);
           } else {
-            // Agents 2, 3, 4 in parallel, all from the same SRS contract
+            // Agents 2, 3, 4 and the full SRS all run at the same time, from the same contract
             const jobs: (() => Promise<string>)[] = [
               () => frontendRun(),
-              () => runAgent("backend", backendPrompt(spec, tracking, healthcare), (t) => normalizeFiles(t, "app/api/route.ts"), validateBackend),
-              () => runAgent("database", databasePrompt(spec, tracking, healthcare), (t) => t, validateSchema),
+              () => runAgent("backend", backendPrompt(contract, tracking, healthcare), (t) => normalizeFiles(t, "app/api/route.ts"), validateBackend),
+              () => runAgent("database", databasePrompt(contract, tracking, healthcare), (t) => t, validateSchema),
+              () => specRun(),
             ];
-            // Three AI calls at once can hit a rate limit / overload on ONE of them. Re-run only the
+            // Several AI calls at once can hit a rate limit / overload on ONE of them. Re-run only the
             // ones that failed (once, while there is time left) instead of throwing the build away.
             const results: PromiseSettledResult<string>[] = await Promise.allSettled(jobs.map((j) => j()));
             for (let n = 0; n < jobs.length; n++) {
@@ -294,7 +339,7 @@ export async function POST(req: Request) {
             }
             const failedJob = results.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined;
             if (failedJob) throw failedJob.reason;
-            [frontend, backend, database] = results.map((r) => (r as PromiseFulfilledResult<string>).value);
+            [frontend, backend, database, spec] = results.map((r) => (r as PromiseFulfilledResult<string>).value);
             if (tracking) {
               frontend = addTrackingFrontendFiles(frontend);
               backend = addTrackingBackendFiles(backend);

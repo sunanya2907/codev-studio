@@ -1,4 +1,4 @@
-import "server-only";
+import "server-only"; // build fails if a client component ever imports this file
 // AI helper. Every AI call in the app goes through generateText().
 // Gemini is the only provider (set GEMINI_API_KEY). Plain REST call: no extra npm packages.
 // Provider fail-over was removed on purpose; it can be added back later.
@@ -82,6 +82,12 @@ async function generateOnce(prompt: string, opts: GenerateOptions, all: AiAttemp
   const maxTokens = opts.maxOutputTokens || Number(envOf("GEMINI_MAX_OUTPUT_TOKENS")) || DEFAULT_MAX_TOKENS;
   const attemptCap =
     opts.attemptTimeoutMs ?? (Number(envOf("AI_ATTEMPT_TIMEOUT_MS")) || 240_000);
+  // If Gemini sends NOTHING for this long the call is treated as stuck, dropped, and retried on the next model.
+  // (Before this, one stuck call could use the whole 300 second limit and the build failed.)
+  const stallMs = Number(envOf("AI_STALL_MS")) || 75_000;
+  const baseUrl = envOf("GEMINI_BASE_URL") || "https://generativelanguage.googleapis.com";
+  // Optional: limit "thinking" (a big part of the wait on thinking-capable models). Example: GEMINI_THINKING_BUDGET=0
+  const thinking = envOf("GEMINI_THINKING_BUDGET");
 
   const remaining = opts.deadline ? opts.deadline - Date.now() : Infinity;
   const started = Date.now();
@@ -94,40 +100,92 @@ async function generateOnce(prompt: string, opts: GenerateOptions, all: AiAttemp
   if (remaining < 3_000) return fail("Not enough time left");
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), Math.min(attemptCap, remaining));
+  let abortWhy = "";
+  const totalTimer = setTimeout(() => {
+    abortWhy = `no answer within ${Math.round(Math.min(attemptCap, remaining) / 1000)}s`;
+    controller.abort();
+  }, Math.min(attemptCap, remaining));
+  let stallTimer: ReturnType<typeof setTimeout> | undefined;
+  const armStall = () => {
+    if (stallTimer) clearTimeout(stallTimer);
+    stallTimer = setTimeout(() => {
+      abortWhy = `no data for ${Math.round(stallMs / 1000)}s`;
+      controller.abort();
+    }, stallMs);
+  };
 
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-goog-api-key": key },
-        body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: prompt }] }],
-          generationConfig: { maxOutputTokens: maxTokens },
-        }),
-        signal: controller.signal,
-      }
-    );
-    const data: any = await res.json().catch(() => ({}));
-    if (!res.ok) {
+    armStall();
+    const generationConfig: Record<string, unknown> = { maxOutputTokens: maxTokens };
+    if (thinking !== "" && Number.isFinite(Number(thinking))) generationConfig.thinkingConfig = { thinkingBudget: Number(thinking) };
+
+    const res = await fetch(`${baseUrl}/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+      body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig }),
+      signal: controller.signal,
+    });
+    if (!res.ok || !res.body) {
+      const data: any = await res.json().catch(() => ({}));
       return fail(`HTTP ${res.status}: ${String(data?.error?.message || "").slice(0, 280)}`);
     }
-    if (data?.promptFeedback?.blockReason) {
-      return fail(`Blocked: ${data.promptFeedback.blockReason}`);
+
+    // Read the answer as it streams in (Server-Sent Events: lines starting with "data: ").
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    let text = "";
+    let finishReason = "";
+    let blockReason = "";
+    let firstChunkMs = 0;
+    const handleEvent = (raw: string) => {
+      const line = raw.split(/\r?\n/).find((l) => l.startsWith("data:"));
+      if (!line) return;
+      const json = line.slice(5).trim();
+      if (!json || json === "[DONE]") return;
+      let data: any;
+      try {
+        data = JSON.parse(json);
+      } catch {
+        return; // a half-received event: ignore
+      }
+      if (data?.error) fail(`HTTP ${data.error.code || 500}: ${String(data.error.message || "").slice(0, 280)}`);
+      if (data?.promptFeedback?.blockReason) blockReason = String(data.promptFeedback.blockReason);
+      const cand = data?.candidates?.[0];
+      if (cand?.finishReason) finishReason = String(cand.finishReason);
+      for (const p of cand?.content?.parts ?? []) if (typeof p?.text === "string" && !p?.thought) text += p.text;
+    };
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      armStall(); // data arrived: the call is alive
+      if (!firstChunkMs) firstChunkMs = Date.now() - started;
+      buf += decoder.decode(value, { stream: true });
+      let idx: number;
+      while ((idx = buf.search(/\r?\n\r?\n/)) !== -1) {
+        handleEvent(buf.slice(0, idx));
+        buf = buf.slice(idx).replace(/^\r?\n\r?\n/, "");
+      }
     }
-    const cand = data?.candidates?.[0];
-    const text = (cand?.content?.parts ?? []).map((x: any) => x?.text ?? "").join("").trim();
+    if (buf.trim()) handleEvent(buf);
+
+    if (blockReason && !text.trim()) return fail(`Blocked: ${blockReason}`);
+    text = text.trim();
     if (!text) return fail("Empty response");
-    if (cand?.finishReason === "MAX_TOKENS") {
+    if (finishReason === "MAX_TOKENS") {
       console.warn("Gemini answer was cut off (token limit); returning the partial answer.");
     }
-    all.push({ provider: "gemini", ok: true, ms: Date.now() - started });
+    const ms = Date.now() - started;
+    all.push({ provider: "gemini", ok: true, ms });
+    // Timing line for the Vercel logs: how long Gemini took to start and to finish.
+    console.log("GEMINI OK", JSON.stringify({ model, firstTokenMs: firstChunkMs, totalMs: ms, chars: text.length, finishReason }));
     return { text, provider: "gemini", model, attempts: all };
   } catch (err: any) {
     if (err instanceof AiUnavailableError) throw err;
-    return fail(err?.name === "AbortError" ? "Timed out" : String(err?.message || err).slice(0, 300));
+    if (err?.name === "AbortError") return fail(`Timed out (${abortWhy || "aborted"})`);
+    return fail(String(err?.message || err).slice(0, 300));
   } finally {
-    clearTimeout(timer);
+    clearTimeout(totalTimer);
+    if (stallTimer) clearTimeout(stallTimer);
   }
 }

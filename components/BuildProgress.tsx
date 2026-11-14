@@ -27,16 +27,16 @@ type Step = {
 };
 
 const PAID: Step[] = [
-  { key: "spec", name: "Agent 1 · SRS", working: "Writing the requirements, data model and API contract", icon: Layers, weight: 0.18, typical: 25, start: 0, end: 0.22 },
-  { key: "frontend", name: "Agent 2 · Frontend", working: "Building the multi-page interface", icon: Layout, weight: 0.2, typical: 60, start: 0.22, end: 0.72 },
-  { key: "backend", name: "Agent 3 · Backend", working: "Writing the API routes and validation", icon: Server, weight: 0.2, typical: 55, start: 0.22, end: 0.72 },
-  { key: "database", name: "Agent 4 · Database", working: "Designing the database schema", icon: Database, weight: 0.1, typical: 25, start: 0.22, end: 0.72 },
+  { key: "spec", name: "Agent 1 · SRS", working: "Fixing the data model, API and pages, then writing the full requirements", icon: Layers, weight: 0.18, typical: 70, start: 0, end: 0.6 },
+  { key: "frontend", name: "Agent 2 · Frontend", working: "Building the multi-page interface", icon: Layout, weight: 0.2, typical: 60, start: 0.12, end: 0.72 },
+  { key: "backend", name: "Agent 3 · Backend", working: "Writing the API routes and validation", icon: Server, weight: 0.2, typical: 55, start: 0.12, end: 0.72 },
+  { key: "database", name: "Agent 4 · Database", working: "Designing the database schema", icon: Database, weight: 0.1, typical: 25, start: 0.12, end: 0.72 },
   { key: "qa", name: "Agent 5 · QA & Security", working: "Reviewing the real code, then running code checks", icon: ShieldCheck, weight: 0.16, typical: 40, start: 0.72, end: 1 },
   { key: "flow", name: "Pseudocode & Flowchart", working: "Drawing the flowcharts and writing the pseudocode", icon: GitBranch, weight: 0.16, typical: 40, start: 0.72, end: 1 },
 ];
 const FREE: Step[] = [
-  { key: "spec", name: "Agent 1 · SRS", working: "Writing the requirements, data model and API contract", icon: Layers, weight: 0.4, typical: 25, start: 0, end: 0.38 },
-  { key: "frontend", name: "Agent 2 · Frontend", working: "Building your app for the Live Preview", icon: Layout, weight: 0.6, typical: 60, start: 0.38, end: 1 },
+  { key: "spec", name: "Agent 1 · SRS", working: "Fixing the data model, API and pages", icon: Layers, weight: 0.25, typical: 20, start: 0, end: 0.2 },
+  { key: "frontend", name: "Agent 2 · Frontend", working: "Building your app for the Live Preview", icon: Layout, weight: 0.75, typical: 60, start: 0.2, end: 1 },
 ];
 
 const PAID_ESTIMATE = 150;

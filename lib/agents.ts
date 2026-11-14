@@ -23,7 +23,19 @@ const FILE_FORMAT = `OUTPUT FORMAT (strict): return every file as
 <complete file contents>
 Start each file with that exact marker line on its own line. No markdown fences, no explanations, nothing before the first marker.`;
 
-export const srsPrompt = (idea: string, tracking = false, healthcare = false) => `You are Agent 1, a senior business analyst. Write a complete Software Requirements Specification (SRS) in Markdown, in the style of IEEE 830, for this web app idea:
+// Step 1 of Agent 1 (about 15 to 20 seconds): ONLY the three binding sections. Agents 2, 3 and 4 start from this
+// immediately, while the full SRS (srsPrompt) is written at the same time.
+export const contractPrompt = (idea: string, tracking = false, healthcare = false) => `You are Agent 1, a senior business analyst. For this web app idea:
+"${idea}"
+write ONLY the binding contract of its Software Requirements Specification, as Markdown. Other engineers start building the frontend, the API and the database from your text at once, so every name must be precise and consistent. Use exactly these headings, in this order:
+# Contract: <app name>
+## 5. Data Model  (BINDING CONTRACT. For every entity a table: field | type | constraints. Use camelCase fields and PascalCase entity names. Include id, createdAt, updatedAt and relations. If users must log in, the User entity includes email (unique) and passwordHash.)
+## 6. API Contract  (BINDING CONTRACT. A table per resource: method | path | auth required | request JSON | success JSON | error cases. Paths under /api/..., consistent names that match section 5.)
+## 7. Pages & UI Flows  (BINDING CONTRACT. For every page: route | purpose | main components | API endpoints it calls. Include a landing/dashboard page at "/".)
+
+Rules: be specific and realistic for THIS idea, no placeholders, no filler, no other sections. Keep it under about 1,000 words. Return only the Markdown.${tracking ? SRS_TRACKING_ADDENDUM : ""}${healthcare ? SRS_HEALTH_ADDENDUM(tracking) : ""}`;
+
+export const srsPrompt = (idea: string, tracking = false, healthcare = false, contract = "") => `You are Agent 1, a senior business analyst. Write a complete Software Requirements Specification (SRS) in Markdown, in the style of IEEE 830, for this web app idea:
 "${idea}"
 
 Use exactly these sections, in this order:
@@ -37,9 +49,12 @@ Use exactly these sections, in this order:
 ## 7. Pages & UI Flows  (BINDING CONTRACT. For every page: route | purpose | main components | API endpoints it calls. Include a landing/dashboard page at "/".)
 ## 8. Out of Scope
 
-Rules: be specific and realistic for THIS idea, no placeholders, no filler. Sections 5, 6 and 7 will be used verbatim by other engineers, so every name must be precise and consistent. Keep the whole document under about 2,500 words. Return only the Markdown.${tracking ? SRS_TRACKING_ADDENDUM : ""}${healthcare ? SRS_HEALTH_ADDENDUM(tracking) : ""}`;
+Rules: be specific and realistic for THIS idea, no placeholders, no filler. Sections 5, 6 and 7 will be used verbatim by other engineers, so every name must be precise and consistent. Keep the whole document under about 2,500 words. Return only the Markdown.${tracking ? SRS_TRACKING_ADDENDUM : ""}${healthcare ? SRS_HEALTH_ADDENDUM(tracking) : ""}${contract ? `\n\nSECTIONS 5, 6 AND 7 ARE ALREADY FIXED: the frontend, API and database are being built from them right now. Reproduce the contract below VERBATIM as sections 5, 6 and 7 (do not rename or change anything in it), and write sections 1 to 4 and 8 so that they agree with it.\n\nCONTRACT:\n${contract}` : ""}`;
 
-export const frontendPrompt = (srs: string, tracking = false, healthcare = false) => `You are Agent 2, a senior frontend engineer. Using ONLY the SRS below, build the WHOLE frontend as a multi-page Next.js 15 App Router + TypeScript + Tailwind CSS app.
+// compact = a smaller answer that fits a short time budget (Live Preview builds, or Vercel Hobby's 300 second limit).
+const FRONTEND_SIZE_FULL = `Aim for roughly 6 to 12 files, complete and working, not stubs.`;
+const FRONTEND_SIZE_COMPACT = `Aim for 5 to 7 files in total, complete and working, not stubs: app/page.tsx, at most 3 other pages, 2 to 3 small shared components, lib/types.ts and lib/api.ts. If SRS section 7 lists more pages, fold the secondary ones into tabs or sections of the pages you build, so every feature stays reachable. Keep every file under about 150 lines: dense Tailwind classes, no long comments, no repeated markup (map over arrays), no decorative extras. A SHORT answer is required: it must finish quickly.`;
+export const frontendPrompt = (srs: string, tracking = false, healthcare = false, compact = false) => `You are Agent 2, a senior frontend engineer. Using ONLY the SRS below, build the WHOLE frontend as a multi-page Next.js 15 App Router + TypeScript + Tailwind CSS app.
 
 Deliver:
 - app/page.tsx : the main landing/dashboard page ("/").
@@ -47,7 +62,7 @@ Deliver:
 - components/*.tsx : reusable components (navbar, cards, forms, modals, empty/loading/error states).
 - lib/types.ts : TypeScript types matching SRS section 5.
 - lib/api.ts : small typed fetch helpers that call EXACTLY the paths, methods and JSON shapes from SRS section 6.
-Aim for roughly 6 to 12 files, complete and working, not stubs.
+${compact ? FRONTEND_SIZE_COMPACT : FRONTEND_SIZE_FULL}
 
 Rules:
 - Every file using hooks, state or events starts with "use client";.
