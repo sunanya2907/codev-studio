@@ -1,3 +1,4 @@
+import "server-only";
 // AI helper. Every AI call in the app goes through generateText().
 // Gemini is the only provider (set GEMINI_API_KEY). Plain REST call: no extra npm packages.
 // Provider fail-over was removed on purpose; it can be added back later.
@@ -39,11 +40,13 @@ export type GenerateOptions = {
   deadline?: number;
   /** Max time for the request. Default 240s (AI_ATTEMPT_TIMEOUT_MS). */
   attemptTimeoutMs?: number;
+  /** Cap on the answer length (default 32768). Small jobs such as a review can use less. */
+  maxOutputTokens?: number;
 };
 
 const RETRIES = 2; // extra tries on temporary Gemini errors (overload / rate limit / timeout)
 
-const modelChain = () => {
+export const modelChain = () => {
   const primary = envOf("GEMINI_MODEL") || DEFAULT_MODEL;
   const extra = (envOf("GEMINI_FALLBACK_MODELS") || "gemini-3.7-flash,gemini-3.5-flash")
     .split(",").map((m) => m.trim()).filter(Boolean);
@@ -76,7 +79,7 @@ async function generateOnce(prompt: string, opts: GenerateOptions, all: AiAttemp
   const key = envOf("GEMINI_API_KEY");
   if (!key) throw new AiNotConfiguredError();
 
-  const maxTokens = Number(envOf("GEMINI_MAX_OUTPUT_TOKENS")) || DEFAULT_MAX_TOKENS;
+  const maxTokens = opts.maxOutputTokens || Number(envOf("GEMINI_MAX_OUTPUT_TOKENS")) || DEFAULT_MAX_TOKENS;
   const attemptCap =
     opts.attemptTimeoutMs ?? (Number(envOf("AI_ATTEMPT_TIMEOUT_MS")) || 240_000);
 

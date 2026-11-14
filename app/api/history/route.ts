@@ -39,7 +39,7 @@ export async function GET(request: Request) {
     const LOCKED = `// Locked on Free Plan. Upgrade to Standard (${STANDARD_PRICE_LABEL}) to view, edit and export the code.`;
     const history =
       me?.tier === "FREE"
-        ? rows.map((r: any) => ({ ...r, spec: LOCKED, backend: LOCKED, database: LOCKED, qa: LOCKED }))
+        ? rows.map((r: any) => ({ ...r, spec: LOCKED, backend: LOCKED, database: LOCKED, qa: LOCKED, flow: LOCKED }))
         : rows;
 
     return NextResponse.json({ history });

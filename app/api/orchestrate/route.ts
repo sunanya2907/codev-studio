@@ -6,17 +6,16 @@ import { BUILD_COST, CUSTOMIZE_COST, STANDARD_PRICE_LABEL } from "@/lib/plans";
 import { getBillingState, reserveTokens, refundTokens } from "@/lib/tokens";
 import { normalizeFiles } from "@/lib/files";
 import { failBuild, reconcileStaleBuilds } from "@/lib/builds";
-import { runStaticChecks } from "@/lib/checks";
+import { qaPendingText } from "@/lib/qa-review";
 import { validateBackend, validateFrontend, validateSchema, validateSrs } from "@/lib/validate";
 import { isHealthcareIdea } from "@/lib/healthcare";
 import { addTrackingBackendFiles, addTrackingFrontendFiles, isTrackingIdea } from "@/lib/tracking";
-import { AiNotConfiguredError, AiUnavailableError, aiConfigured, generateText } from "@/lib/ai";
+import { AiNotConfiguredError, AiUnavailableError, aiConfigured, generateText, type GenerateOptions } from "@/lib/ai";
 import {
   srsPrompt,
   frontendPrompt,
   backendPrompt,
   databasePrompt,
-  qaPrompt,
   customizeHint,
 } from "@/lib/agents";
 
@@ -33,7 +32,7 @@ const MAX_PROMPT_LENGTH = 1500; // idea (max 500 in the editor) + the answers to
 const MAX_INSTRUCTION_LENGTH = 1000;
 const MAX_CODE_LENGTH = 150000; // multi-file modules are bigger than the old single files
 
-const AGENT_KEYS = ["spec", "frontend", "backend", "database", "qa"] as const;
+const AGENT_KEYS = ["spec", "frontend", "backend", "database", "qa", "flow"] as const;
 type AgentKey = (typeof AGENT_KEYS)[number];
 
 export async function POST(req: Request) {
@@ -89,9 +88,9 @@ export async function POST(req: Request) {
     const deadline = Date.now() + (process.env.VERCEL ? (maxDuration - 15) * 1000 : 20 * 60 * 1000);
     const providersUsed: string[] = [];
 
-    const callAI = async (systemPrompt: string) => {
+    const callAI = async (systemPrompt: string, extra: Partial<GenerateOptions> = {}) => {
       // Gemini only; temporary errors are retried inside lib/ai.ts.
-      const result = await generateText(systemPrompt, { deadline });
+      const result = await generateText(systemPrompt, { deadline, ...extra });
       if (!providersUsed.includes(result.provider)) providersUsed.push(result.provider);
       let text = result.text.trim();
 
@@ -235,6 +234,7 @@ export async function POST(req: Request) {
           validate: (t: string) => string[]
         ): Promise<string> => {
           event(key, "start");
+          const t0 = Date.now();
           let text = clean(await callAI(basePrompt));
           let issues = validate(text);
           if (issues.length) {
@@ -254,10 +254,12 @@ export async function POST(req: Request) {
             throw new Error(`Agent ${AGENT_KEYS.indexOf(key) + 1} could not produce a usable result (${issues[0] || "empty answer"}). Please try again.`);
           }
           issues.forEach((i) => warnings.push(`Agent ${AGENT_KEYS.indexOf(key) + 1}: ${i}`));
+          console.log("BUILD TIMING", JSON.stringify({ buildId, agent: key, seconds: Math.round((Date.now() - t0) / 1000) }));
           event(key, "done");
           return text;
         };
 
+        const buildStartedAt = Date.now();
         try {
           const LOCKED = `// Locked on Free Plan. Upgrade to Standard (${STANDARD_PRICE_LABEL}) to view, edit and export the code.`;
           let frontend = LOCKED;
@@ -276,24 +278,31 @@ export async function POST(req: Request) {
             if (tracking) frontend = addTrackingFrontendFiles(frontend);
           } else {
             // Agents 2, 3, 4 in parallel, all from the same SRS contract
-            [frontend, backend, database] = await Promise.all([
-              frontendRun(),
-              runAgent("backend", backendPrompt(spec, tracking, healthcare), (t) => normalizeFiles(t, "app/api/route.ts"), validateBackend),
-              runAgent("database", databasePrompt(spec, tracking, healthcare), (t) => t, validateSchema),
-            ]);
+            const jobs: (() => Promise<string>)[] = [
+              () => frontendRun(),
+              () => runAgent("backend", backendPrompt(spec, tracking, healthcare), (t) => normalizeFiles(t, "app/api/route.ts"), validateBackend),
+              () => runAgent("database", databasePrompt(spec, tracking, healthcare), (t) => t, validateSchema),
+            ];
+            // Three AI calls at once can hit a rate limit / overload on ONE of them. Re-run only the
+            // ones that failed (once, while there is time left) instead of throwing the build away.
+            const results: PromiseSettledResult<string>[] = await Promise.allSettled(jobs.map((j) => j()));
+            for (let n = 0; n < jobs.length; n++) {
+              if (results[n].status === "rejected" && deadline - Date.now() > 90_000) {
+                await new Promise((r) => setTimeout(r, 3000));
+                results[n] = (await Promise.allSettled([jobs[n]()]))[0];
+              }
+            }
+            const failedJob = results.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined;
+            if (failedJob) throw failedJob.reason;
+            [frontend, backend, database] = results.map((r) => (r as PromiseFulfilledResult<string>).value);
             if (tracking) {
               frontend = addTrackingFrontendFiles(frontend);
               backend = addTrackingBackendFiles(backend);
             }
-            // Agent 5 reviews the REAL code; code-level checks are added as facts
-            event("qa", "start");
-            qa = await callAI(qaPrompt(spec, frontend, backend, database, tracking, healthcare));
-            const checks = runStaticChecks(spec, frontend, backend, database);
-            const warn = warnings.length
-              ? `\n\n---\n## Output warnings\nThe agents' answers passed with these small problems:\n${warnings.map((w) => `- ${w}`).join("\n")}\n`
-              : "";
-            qa = `${qa.trim()}${warn}${checks.markdown}`;
-            event("qa", "done");
+            // Agent 5 (QA & security review) is NOT run here any more. It runs as its own request
+            // (/api/orchestrate/qa) right after this build is saved, so it gets a fresh time budget
+            // and can never make a finished build fail. The placeholder carries the small warnings.
+            qa = qaPendingText(warnings);
           }
 
           await db.generationHistory.update({
@@ -301,8 +310,11 @@ export async function POST(req: Request) {
             data: { spec, frontend, backend, database, qa, status: "DONE", error: null },
           });
 
+          console.log("BUILD TIMING", JSON.stringify({ buildId, total: true, seconds: Math.round((Date.now() - buildStartedAt) / 1000) }));
           send({
             type: "done",
+            qaPending: !isFree,
+            flowPending: !isFree,
             spec: isFree ? LOCKED : spec,
             frontend,
             backend,

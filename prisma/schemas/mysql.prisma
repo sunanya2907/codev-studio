@@ -100,6 +100,7 @@ model GenerationHistory {
   backend   String   @db.LongText
   database  String   @db.LongText
   qa        String   @db.LongText
+  flow      String?  @db.LongText // Agent 6: pseudocode + flowcharts (Markdown with mermaid blocks)
   status    String   @default("DONE") // BUILDING | DONE | FAILED
   error     String?  @db.Text
   createdAt DateTime @default(now())

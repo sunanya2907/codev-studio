@@ -1,3 +1,4 @@
+import "server-only"; // build fails if a client component ever imports this file
 import {
   SRS_TRACKING_ADDENDUM,
   FRONTEND_TRACKING_ADDENDUM,
@@ -119,9 +120,44 @@ ${backend}
 PRISMA SCHEMA:
 ${schema}`;
 
+// Pseudocode & Flowchart: turns the finished build into pseudocode + flowcharts (Mermaid), so the person
+// can understand (and explain) how the app works without reading all the code.
+export const flowPrompt = (srs: string, frontendFiles: string[], backendFiles: string[]) => `You are a senior software architect who explains systems to beginners. Using the SRS and the file list below, write the PSEUDOCODE and FLOWCHARTS of the finished app.
+
+Return Markdown with exactly these sections, in this order:
+# Pseudocode & Flowcharts: <app name>
+## 1. System Flowchart
+One short sentence, then ONE mermaid block showing how the pieces connect (User -> pages -> API routes -> database, plus login if the app has it).
+## 2. User Journey Flowchart
+One short sentence, then ONE mermaid block for the main thing a user does from opening the app to finishing the task, including decision points (Yes/No) and error paths.
+## 3. Feature Flowcharts
+For the 2 to 4 most important features from the SRS: a "### <feature>" heading, then ONE mermaid block each.
+## 4. Pseudocode
+For the same features and for login (if any): a "### <feature>" heading, then a plain-text code block (use \`\`\`text) of numbered, indented pseudocode. Use words like FUNCTION, IF / ELSE, FOR EACH, RETURN, VALIDATE, SAVE, FETCH. Mention the real API paths and entity names from the SRS.
+## 5. Data Flow
+A short bullet list: where each important piece of data is created, stored, read, changed and deleted.
+
+MERMAID RULES (the diagram must render without errors):
+- Start each block with \`\`\`mermaid and a first line of "flowchart TD".
+- Node ids are simple letters/numbers only (A, B1, C2). Put EVERY label in double quotes, for example A["Open the app"].
+- Decisions use curly braces with quotes: B{"Logged in?"}. Edge labels look like A -->|"Yes"| B.
+- No parentheses, brackets or quotes inside a label, no HTML, no semicolons, no "end" as a label, no styling or classDef lines.
+- Maximum 14 nodes per diagram so it stays readable.
+
+Be specific to THIS app, not generic. Keep the whole answer under about 1,800 words. Return only the Markdown.
+
+FRONTEND FILES: ${frontendFiles.join(", ") || "(none)"}
+BACKEND FILES: ${backendFiles.join(", ") || "(none)"}
+
+SRS:
+${srs}`;
+
 export const customizeHint = (agent: string): string => {
   if (agent === "frontend" || agent === "backend") {
     return `This module is a set of files in the format "=== FILE: path ===". Return ALL files (changed and unchanged) in the same format, nothing else. Keep names and API paths consistent with the SRS contracts. Allowed imports stay the same.`;
+  }
+  if (agent === "flow") {
+    return `This is Markdown with mermaid flowcharts and plain-text pseudocode. Return the COMPLETE updated Markdown. Keep each mermaid block valid: it starts with "flowchart TD", every node label is in double quotes, no parentheses inside labels, at most 14 nodes per diagram.`;
   }
   if (agent === "spec") {
     return `This is an SRS. Keep its section structure. If you change section 5, 6 or 7, keep names consistent because other agents depend on them.`;

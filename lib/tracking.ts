@@ -1,3 +1,4 @@
+import "server-only";
 // Support for GPS / live-tracking / fleet / delivery / asset apps.
 //
 // 1. isTrackingIdea()  - detects such an idea from the user's prompt.

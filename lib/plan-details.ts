@@ -44,10 +44,11 @@ export const PLAN_DETAILS: PlanDetail[] = [
     tokens: TIER_TOKENS.STANDARD,
     badge: `${TIER_TOKENS.STANDARD} Tokens Included`,
     tag: "Best Value",
-    desc: "Unlocks all 5 AI agents, full code access & ZIP Export.",
+    desc: "Unlocks all 5 AI agents, pseudocode & flowcharts, full code access & ZIP Export.",
     features: [
       `${TIER_TOKENS.STANDARD} Monthly Generation Tokens`,
       "All 5 Full-Stack Agents Unlocked",
+      "Pseudocode & Flowchart for every build",
       "Full code access & ZIP Export",
       `${TOKEN_PRICE_LABEL} Extra Token Top-Ups Anytime`,
     ],
@@ -64,6 +65,7 @@ export const PLAN_DETAILS: PlanDetail[] = [
     features: [
       `${TIER_TOKENS.PRO} Monthly Generation Tokens`,
       "All 5 Full-Stack Agents Unlocked",
+      "Pseudocode & Flowchart for every build",
       "Build history saved (latest 50 builds)",
       `${TOKEN_PRICE_LABEL} Extra Token Top-Ups Anytime`,
     ],

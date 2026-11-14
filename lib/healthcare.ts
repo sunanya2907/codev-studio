@@ -1,3 +1,4 @@
+import "server-only";
 // Doctor / clinic / patient apps: extra rules for the agents (see lib/agents.ts).
 // Combined with lib/tracking.ts when the idea also needs GPS (home visits, ambulance, nearby doctors).
 

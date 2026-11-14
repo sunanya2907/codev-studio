@@ -7,6 +7,7 @@ import {
   ArrowRight,
   Check,
   Database,
+  GitBranch,
   Globe,
   Layers,
   Layout,
@@ -98,6 +99,7 @@ function LiveBuildMock() {
     { icon: Server, label: "Agent 3 · Writing the API" },
     { icon: Database, label: "Agent 4 · Designing the database" },
     { icon: ShieldCheck, label: "Agent 5 · Reviewing the code" },
+    { icon: GitBranch, label: "Pseudocode & Flowchart · Drawing the logic" },
   ];
   return (
     <div className="rounded-2xl border border-slate-800 bg-[#0B1020]/90 backdrop-blur p-4 shadow-2xl" aria-hidden="true">
@@ -117,12 +119,12 @@ function LiveBuildMock() {
             <div
               key={r.label}
               className="bc-row flex items-center gap-3 rounded-xl border px-3 py-2"
-              style={{ animationDelay: `${i * 1.6}s` }}
+              style={{ animationDelay: `${i * 1.4}s` }}
             >
               <span className="relative w-7 h-7 rounded-lg bg-slate-800 flex items-center justify-center text-slate-300">
                 <Icon className="w-3.5 h-3.5" />
-                <span className="bc-working absolute inset-0 rounded-lg ring-2 ring-violet-400/70" style={{ animationDelay: `${i * 1.6}s` }} />
-                <span className="bc-done absolute inset-0 rounded-lg bg-emerald-500 text-white flex items-center justify-center" style={{ animationDelay: `${i * 1.6}s` }}>
+                <span className="bc-working absolute inset-0 rounded-lg ring-2 ring-violet-400/70" style={{ animationDelay: `${i * 1.4}s` }} />
+                <span className="bc-done absolute inset-0 rounded-lg bg-emerald-500 text-white flex items-center justify-center" style={{ animationDelay: `${i * 1.4}s` }}>
                   <Check className="w-3.5 h-3.5" />
                 </span>
               </span>
@@ -295,6 +297,16 @@ export default function Landing({ builds }: { builds: number | null }) {
           <Reveal delay={5 * 90}>
             <div className="h-full rounded-2xl border border-dashed border-slate-700 bg-slate-900/30 p-5 backdrop-blur">
               <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-800">
+                <GitBranch className="h-5 w-5 text-fuchsia-300" />
+              </span>
+              <p className="mt-4 text-[11px] font-mono uppercase tracking-widest text-slate-500">Included</p>
+              <h3 className="mt-1 text-lg font-bold">Pseudocode &amp; Flowchart</h3>
+              <p className="mt-2 text-sm leading-relaxed text-slate-400">Every build also gets drawn flowcharts and step-by-step pseudocode, so you can see and explain how your app works without reading the code.</p>
+            </div>
+          </Reveal>
+          <Reveal delay={6 * 90}>
+            <div className="h-full rounded-2xl border border-dashed border-slate-700 bg-slate-900/30 p-5 backdrop-blur">
+              <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-800">
                 <Mic className="h-5 w-5 text-cyan-300" />
               </span>
               <p className="mt-4 text-[11px] font-mono uppercase tracking-widest text-slate-500">Also</p>
@@ -315,7 +327,7 @@ export default function Landing({ builds }: { builds: number | null }) {
           {[
             { n: "01", icon: Sparkles, t: "Describe it", d: "Type or say what you want. One build costs one token." },
             { n: "02", icon: Layers, t: "Watch it build", d: "See each agent start and finish in real time, with a live preview of your app." },
-            { n: "03", icon: Globe, t: "Use the result", d: "Paid plans get the full code, a QA report and a runnable ZIP. Find a domain from inside the editor." },
+            { n: "03", icon: Globe, t: "Use the result", d: "Paid plans get the full code, a QA report, pseudocode &amp; flowcharts and a runnable ZIP. Find a domain from inside the editor." },
           ].map((s, i) => {
             const Icon = s.icon;
             return (

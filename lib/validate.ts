@@ -1,3 +1,4 @@
+import "server-only";
 // Quick structural checks on what each agent returned. If an answer fails them, the build
 // asks that agent once more (with the problems listed) before giving up.
 import { parseFiles } from "@/lib/files";

@@ -1,3 +1,4 @@
+import "server-only";
 // Deterministic cross-checks between the SRS, the frontend, the backend and the schema.
 // These run in plain code (not AI), so their findings are facts. They are appended to the
 // QA report that Agent 5 writes.

@@ -1,9 +1,9 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { AlertTriangle, Check, Clock, Database, Layers, Layout, Loader2, Server, ShieldCheck } from "lucide-react";
+import { AlertTriangle, Check, Clock, Database, GitBranch, Layers, Layout, Loader2, Server, ShieldCheck } from "lucide-react";
 
-export type AgentKey = "spec" | "frontend" | "backend" | "database" | "qa";
+export type AgentKey = "spec" | "frontend" | "backend" | "database" | "qa" | "flow";
 export type AgentState = "waiting" | "working" | "retry" | "done";
 export type AgentStatuses = Record<AgentKey, AgentState>;
 export const IDLE_STATUSES: AgentStatuses = {
@@ -12,6 +12,7 @@ export const IDLE_STATUSES: AgentStatuses = {
   backend: "waiting",
   database: "waiting",
   qa: "waiting",
+  flow: "waiting",
 };
 
 type Step = {
@@ -26,11 +27,12 @@ type Step = {
 };
 
 const PAID: Step[] = [
-  { key: "spec", name: "Agent 1 · SRS", working: "Writing the requirements, data model and API contract", icon: Layers, weight: 0.2, typical: 25, start: 0, end: 0.22 },
-  { key: "frontend", name: "Agent 2 · Frontend", working: "Building the multi-page interface", icon: Layout, weight: 0.22, typical: 60, start: 0.22, end: 0.72 },
-  { key: "backend", name: "Agent 3 · Backend", working: "Writing the API routes and validation", icon: Server, weight: 0.22, typical: 55, start: 0.22, end: 0.72 },
-  { key: "database", name: "Agent 4 · Database", working: "Designing the database schema", icon: Database, weight: 0.12, typical: 25, start: 0.22, end: 0.72 },
-  { key: "qa", name: "Agent 5 · QA & Security", working: "Reviewing the real code, then running code checks", icon: ShieldCheck, weight: 0.24, typical: 40, start: 0.72, end: 1 },
+  { key: "spec", name: "Agent 1 · SRS", working: "Writing the requirements, data model and API contract", icon: Layers, weight: 0.18, typical: 25, start: 0, end: 0.22 },
+  { key: "frontend", name: "Agent 2 · Frontend", working: "Building the multi-page interface", icon: Layout, weight: 0.2, typical: 60, start: 0.22, end: 0.72 },
+  { key: "backend", name: "Agent 3 · Backend", working: "Writing the API routes and validation", icon: Server, weight: 0.2, typical: 55, start: 0.22, end: 0.72 },
+  { key: "database", name: "Agent 4 · Database", working: "Designing the database schema", icon: Database, weight: 0.1, typical: 25, start: 0.22, end: 0.72 },
+  { key: "qa", name: "Agent 5 · QA & Security", working: "Reviewing the real code, then running code checks", icon: ShieldCheck, weight: 0.16, typical: 40, start: 0.72, end: 1 },
+  { key: "flow", name: "Pseudocode & Flowchart", working: "Drawing the flowcharts and writing the pseudocode", icon: GitBranch, weight: 0.16, typical: 40, start: 0.72, end: 1 },
 ];
 const FREE: Step[] = [
   { key: "spec", name: "Agent 1 · SRS", working: "Writing the requirements, data model and API contract", icon: Layers, weight: 0.4, typical: 25, start: 0, end: 0.38 },

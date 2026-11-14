@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { signOut } from "next-auth/react";
+import { isQaPending } from "@/lib/qa-review";
 import { useRouter } from "next/navigation";
 import ProfileModal, { Avatar, type Profile } from "@/components/ProfileModal";
 import JSZip from "jszip";
@@ -25,6 +26,7 @@ import { PLAN_DETAILS } from "@/lib/plan-details";
 import BuildProgress, { IDLE_STATUSES, type AgentStatuses } from "@/components/BuildProgress";
 import VoiceBuilder, { type ApplyResult } from "@/components/VoiceBuilder";
 import DomainSearch from "@/components/DomainSearch";
+import FlowView from "@/components/FlowView";
 import BuildQuestions, { type BuildQuestion } from "@/components/BuildQuestions";
 import type { PaymentProvider } from "@/lib/plans";
 import {
@@ -46,6 +48,7 @@ import {
   Server,
   Database,
   ShieldCheck,
+  GitBranch,
   Copy,
   Check,
   Zap,
@@ -67,6 +70,7 @@ interface HistoryItem {
   backend: string;
   database: string;
   qa?: string;
+  flow?: string | null; // pseudocode & flowchart
   createdAt: string;
   status?: string; // BUILDING | DONE | FAILED
   error?: string | null;
@@ -131,6 +135,18 @@ const AGENTS = [
     buttonLabel: "Customize QA",
     freeAccessible: false,
   },
+  {
+    id: 6,
+    key: "flow",
+    name: "Pseudocode & Flowchart",
+    role: "", // not one of the 5 agents: shown under its own name
+    isAgent: false,
+    badgeColor: "from-sky-600 to-fuchsia-500",
+    icon: GitBranch,
+    placeholder: "Ask to change or add a flowchart or pseudocode...",
+    buttonLabel: "Customize Flow",
+    freeAccessible: false,
+  },
 ];
 
 // If the server times out, Vercel answers with an HTML error page instead of JSON.
@@ -167,6 +183,7 @@ export default function EditorClient({
   const [showDomainModal, setShowDomainModal] = useState(false);
   const [activeTab, setActiveTab] = useState<"editor" | "preview">("editor");
   const [activeAgentIndex, setActiveAgentIndex] = useState<number>(0);
+  const [flowMode, setFlowMode] = useState<"diagram" | "text">("diagram"); // pseudocode & flowchart view
 
   // Plan & Token States
   const [tier, setTier] = useState<"FREE" | "STANDARD" | "PRO" | "EXCLUSIVE">("FREE");
@@ -202,12 +219,14 @@ export default function EditorClient({
     backend: string;
     database: string;
     qa: string;
+    flow: string;
   }>({
     spec: `# Software Requirements Specification\n## Project: Ready to Orchestrate\n\n### Tech Stack\n- Frontend: Next.js 15 + Tailwind CSS\n- Backend: Next.js App Router API\n- Database: PostgreSQL + Prisma ORM\n- Auth: NextAuth.js\n\nDescribe your website idea on the left and click "Build App (1 Token)" to orchestrate your project.`,
     frontend: `export default function GeneratedApp() {\n  return (\n    <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-8">\n      <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl text-center">\n        <span className="px-3 py-1 text-xs font-semibold bg-violet-500/20 text-violet-300 rounded-full">Live Preview Ready</span>\n        <h1 className="text-2xl font-bold mt-4">Build_Core Dynamic App</h1>\n        <p className="text-slate-400 text-sm mt-2">Enter an app idea on the left and click Build to render your live interactive UI here.</p>\n      </div>\n    </div>\n  );\n}`,
     backend: `import { NextResponse } from "next/server";\n\nexport async function GET() {\n  return NextResponse.json({ status: "ok", message: "Agent 3 Backend API Ready" });\n}`,
     database: `model Item {\n  id        String   @id @default(cuid())\n  title     String\n  completed Boolean  @default(false)\n  createdAt DateTime @default(now())\n}`,
     qa: `# Security & Deployment Audit (Agent 5)\n- [x] Environment variables isolated\n- [x] Prisma SQL injection protection verified\n- [x] NextAuth session middleware active\n- [x] Ready for zero-config Vercel production build`,
+    flow: `# Pseudocode & Flowcharts\n\nThe flowcharts and pseudocode of your app appear here after the build finishes.`,
   });
 
   const initialBuffers = React.useRef(buffers);
@@ -215,6 +234,69 @@ export default function EditorClient({
   const [historyList, setHistoryList] = useState<HistoryItem[]>([]);
   // The saved generation currently open in the editor; edits are saved back to it.
   const [currentHistoryId, setCurrentHistoryId] = useState<string | null>(null);
+
+  // Agent 5 (the QA review) runs as its own request after the code is saved.
+  const qaRunning = React.useRef(false);
+  const currentHistoryIdRef = React.useRef<string | null>(null);
+  useEffect(() => {
+    currentHistoryIdRef.current = currentHistoryId;
+  }, [currentHistoryId]);
+
+  const runQaReview = async (id: string) => {
+    if (qaRunning.current) return;
+    qaRunning.current = true;
+    setAgentStatus((p) => ({ ...p, qa: "working" }));
+    const unavailable =
+      "# QA review unavailable\nThe AI reviewer could not run this time. Your app code is complete. Use Customize QA to ask for the review again.";
+    try {
+      const res = await fetch("/api/orchestrate/qa", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ historyId: id }),
+      });
+      const d = await res.json().catch(() => null);
+      const text = res.ok && typeof d?.qa === "string" ? d.qa : unavailable;
+      // only show it if this build is still the one open on screen
+      if (currentHistoryIdRef.current === id || currentHistoryIdRef.current === null) {
+        setBuffers((prev) => ({ ...prev, qa: text }));
+      }
+    } catch {
+      if (currentHistoryIdRef.current === id) setBuffers((prev) => ({ ...prev, qa: unavailable }));
+    } finally {
+      setAgentStatus((p) => ({ ...p, qa: "done" }));
+      qaRunning.current = false;
+      fetchHistory();
+    }
+  };
+
+  // Pseudocode & Flowchart also runs as its own request after the code is saved.
+  const flowRunning = React.useRef(false);
+  const runFlowReview = async (id: string, regenerate = false) => {
+    if (flowRunning.current) return;
+    flowRunning.current = true;
+    setAgentStatus((p) => ({ ...p, flow: "working" }));
+    const unavailable =
+      "# Pseudocode & Flowcharts unavailable\nThe pseudocode and flowchart could not be created this time. Your app code is complete. Use Customize Flow to ask for it again.";
+    try {
+      const res = await fetch("/api/orchestrate/flow", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ historyId: id, regenerate }),
+      });
+      const d = await res.json().catch(() => null);
+      if (res.status === 403) return; // free plan: stays locked
+      const text = res.ok && typeof d?.flow === "string" ? d.flow : unavailable;
+      if (currentHistoryIdRef.current === id || currentHistoryIdRef.current === null) {
+        setBuffers((prev) => ({ ...prev, flow: text }));
+      }
+    } catch {
+      if (currentHistoryIdRef.current === id) setBuffers((prev) => ({ ...prev, flow: unavailable }));
+    } finally {
+      setAgentStatus((p) => ({ ...p, flow: "done" }));
+      flowRunning.current = false;
+      fetchHistory();
+    }
+  };
 
   const openHistoryItem = (item: HistoryItem) => {
     setPrompt(item.prompt);
@@ -228,7 +310,12 @@ export default function EditorClient({
       qa:
         item.qa ||
         "# Agent 5 QA Report\n\nNo QA report was saved for this generation.",
+      flow: item.flow || "# Pseudocode & Flowcharts\n\nThe flowcharts and pseudocode for this build are being drawn. They appear here in a moment.",
     }));
+    // the review of this build never finished (tab closed): run it now
+    if (isQaPending(item.qa) && (!item.status || item.status === "DONE")) void runQaReview(item.id);
+    // builds made before this feature existed (or whose tab was closed): create it now, once
+    if (!item.flow && (!item.status || item.status === "DONE") && tier !== "FREE") void runFlowReview(item.id);
   };
 
   // NEW CHAT: clear the idea, the generated code and the open history item, back to a blank start.
@@ -532,6 +619,9 @@ export default function EditorClient({
         qa:
           data.qa ||
           `# Agent 5 QA Report\n- [x] Verified Spec & API routes for: "${prompt.slice(0, 40)}..."\n- [x] Production build checks passed.`,
+        flow: data.flowPending
+          ? "# Pseudocode & Flowcharts\n\nThe flowcharts and pseudocode are being drawn. They appear here in a moment."
+          : buffers.flow,
       });
 
       if (typeof data.historyId === "string") {
@@ -552,6 +642,15 @@ export default function EditorClient({
       if ((data.tier || tier) === "FREE") {
         setActiveAgentIndex(0);
         setActiveTab("preview");
+      }
+
+      // Agent 5 runs as its own request now (fresh time budget); the code is already saved.
+      // Agents 5 and 6 run side by side.
+      if (typeof data.historyId === "string") {
+        await Promise.all([
+          data.qaPending ? runQaReview(data.historyId) : Promise.resolve(),
+          data.flowPending ? runFlowReview(data.historyId) : Promise.resolve(),
+        ]);
       }
 
       fetchHistory();
@@ -668,7 +767,7 @@ export default function EditorClient({
       setBuffers((prev) => ({ ...prev, [key]: updated }));
       if (typeof data.tokenBalance === "number") setTokenBalance(data.tokenBalance);
       setActiveAgentIndex(AGENTS.findIndex((a) => a.key === key));
-      return { ok: true, message: `Done. I updated the ${agent.role}. Check the result, or tell me the next change.` };
+      return { ok: true, message: `Done. I updated the ${agent.role || agent.name}. Check the result, or tell me the next change.` };
     } catch (e: any) {
       return { ok: false, message: e?.message || "The change failed. Please try again." };
     } finally {
@@ -692,6 +791,7 @@ export default function EditorClient({
     // 2) documents
     zip.file("SRS.md", buffers.spec);
     zip.file("QA_REPORT.md", buffers.qa);
+    zip.file("PSEUDOCODE_AND_FLOWCHART.md", buffers.flow); // mermaid blocks render on GitHub and in most Markdown viewers
     // 3) generated code (written last, so it can override a scaffold file if it must)
     for (const f of parseFiles(buffers.frontend, "app/page.tsx")) {
       const path = cleanPath(f.path);
@@ -854,7 +954,7 @@ export default function EditorClient({
                 <button
                   key={agent.id}
                   onClick={() => setActiveAgentIndex(index)}
-                  title={`${agent.name} • ${agent.role}${isLocked ? " (Locked)" : ""}`}
+                  title={`${agent.name}${agent.role ? ` • ${agent.role}` : ""}${isLocked ? " (Locked)" : ""}`}
                   className={`w-full flex items-center ${
                     sidebarOpen ? "justify-between px-2.5 py-2" : "justify-center p-1.5"
                   } rounded-xl border text-left transition-all ${
@@ -876,9 +976,11 @@ export default function EditorClient({
                       <div className="min-w-0">
                         <div className="text-xs font-bold truncate">
                           {agent.name}
-                          <span className="text-[10px] font-normal text-slate-400">
-                            {" "}• {agent.role}
-                          </span>
+                          {agent.role && (
+                            <span className="text-[10px] font-normal text-slate-400">
+                              {" "}• {agent.role}
+                            </span>
+                          )}
                         </div>
                         <span className="text-[10px] text-slate-400">
                           {isLocked ? "Locked on Free Plan" : "Editable Buffer"}
@@ -1193,7 +1295,32 @@ export default function EditorClient({
             )}
 
             {activeTab === "editor" ? (
-              <div className="flex-1 relative flex flex-col">
+              <div className="flex-1 relative flex flex-col min-h-0">
+                {currentAgent.key === "flow" && !isCurrentAgentLocked && (
+                  <div className="flex items-center gap-1 px-4 py-2 bg-[#0D1322] border-b border-slate-800 shrink-0">
+                    {([["diagram", "Flowchart view"], ["text", "Edit text"]] as const).map(([mode, label]) => (
+                      <button
+                        key={mode}
+                        onClick={() => setFlowMode(mode)}
+                        className={`px-3 py-1 rounded-lg text-[11px] font-bold transition ${flowMode === mode ? "bg-sky-600 text-white" : "text-slate-400 hover:text-white"}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                    {currentHistoryId && (
+                      <button
+                        onClick={() => void runFlowReview(currentHistoryId, true)}
+                        disabled={agentStatus.flow === "working"}
+                        className="ml-auto px-3 py-1 rounded-lg text-[11px] font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 disabled:opacity-50 transition"
+                      >
+                        {agentStatus.flow === "working" ? "Redrawing…" : "Redraw"}
+                      </button>
+                    )}
+                  </div>
+                )}
+                {currentAgent.key === "flow" && !isCurrentAgentLocked && flowMode === "diagram" ? (
+                  <FlowView source={buffers.flow} />
+                ) : (
                 <textarea
                   value={isCurrentAgentLocked ? LOCKED_TEXT : currentCodeValue}
                   onChange={(e) => {
@@ -1206,6 +1333,7 @@ export default function EditorClient({
                     isCurrentAgentLocked ? "blur-md select-none opacity-30" : ""
                   }`}
                 />
+                )}
 
                 {/* UNLOCK FOR ($9) OVERLAY ON AGENTS 2, 3, 4, 5 FOR FREE PLAN */}
                 {isCurrentAgentLocked && (
@@ -1217,10 +1345,10 @@ export default function EditorClient({
                       Free Plan — Live Preview Only
                     </span>
                     <h4 className="text-xl font-extrabold text-white mb-2">
-                      Unlock the code: {currentAgent.name} ({currentAgent.role})
+                      Unlock the code: {currentAgent.name}{currentAgent.role ? ` (${currentAgent.role})` : ""}
                     </h4>
                     <p className="text-xs text-slate-300 max-w-md mb-6 leading-relaxed">
-                      Your Free Plan includes <strong>{FREE_TRIAL_BUILDS} one-time trial builds</strong> where you can run your app in the <strong>Live Preview</strong>. Viewing, copying, editing and exporting the code needs a paid plan. Upgrade to <strong>Standard ({STANDARD_PRICE_LABEL} / {TIER_TOKENS.STANDARD} Tokens)</strong>, <strong>Pro ({PRO_PRICE_LABEL} / {TIER_TOKENS.PRO} Tokens)</strong>, or <strong>Exclusive</strong> to unlock all 5 agents and the full code!
+                      Your Free Plan includes <strong>{FREE_TRIAL_BUILDS} one-time trial builds</strong> where you can run your app in the <strong>Live Preview</strong>. Viewing, copying, editing and exporting the code needs a paid plan. Upgrade to <strong>Standard ({STANDARD_PRICE_LABEL} / {TIER_TOKENS.STANDARD} Tokens)</strong>, <strong>Pro ({PRO_PRICE_LABEL} / {TIER_TOKENS.PRO} Tokens)</strong>, or <strong>Exclusive</strong> to unlock all 5 agents, the pseudocode & flowchart and the full code!
                     </p>
                     <div className="flex flex-wrap items-center justify-center gap-3">
                       <button
