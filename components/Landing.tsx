@@ -180,7 +180,7 @@ export default function Landing({ builds }: { builds: number | null }) {
         redirect: false,
       });
       if (res?.error) setError(friendlyError(res.code ?? res.error));
-      else window.location.href = "/workspace";
+      else window.location.href = "/orchestrate";
     } catch {
       setError("Authentication failed. Please check your connection and try again.");
     } finally {
@@ -386,7 +386,7 @@ export default function Landing({ builds }: { builds: number | null }) {
                     <span className="block text-emerald-300/80">{current.email}</span>
                   </p>
                   <div className="flex flex-wrap gap-2">
-                    <Link href="/workspace" className="rounded-lg bg-emerald-500 px-3 py-1.5 font-bold text-neutral-950 hover:brightness-110">
+                    <Link href="/orchestrate" className="rounded-lg bg-emerald-500 px-3 py-1.5 font-bold text-neutral-950 hover:brightness-110">
                       Continue
                     </Link>
                     <button
@@ -440,7 +440,7 @@ export default function Landing({ builds }: { builds: number | null }) {
                     await signOut({ redirect: false });
                     await fetch("/api/auth-clear", { method: "POST", cache: "no-store" });
                   } catch {}
-                  signIn("google", { callbackUrl: "/workspace" });
+                  signIn("google", { callbackUrl: "/orchestrate" });
                 }}
                 className={`mb-4 flex w-full items-center justify-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold shadow transition-all ${
                   accepted ? "cursor-pointer bg-white text-neutral-900 hover:bg-neutral-100" : "cursor-not-allowed bg-neutral-800 text-neutral-500 opacity-60"

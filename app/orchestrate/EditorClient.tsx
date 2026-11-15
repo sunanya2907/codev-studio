@@ -1071,9 +1071,14 @@ export default function EditorClient({
               title="Account"
               aria-label="Account menu"
               aria-expanded={profileMenuOpen}
-              className="rounded-full ring-2 ring-slate-800 hover:ring-violet-500/60 transition"
+              className="flex items-center gap-2.5 min-w-0 max-w-full rounded-full p-1 pr-3 hover:bg-slate-800/60 transition"
             >
-              <Avatar name={profile.name} image={profile.image} size={40} />
+              <span className="rounded-full ring-2 ring-slate-800 shrink-0">
+                <Avatar name={profile.name} image={profile.image} size={40} />
+              </span>
+              {sidebarOpen && (
+                <span className="text-sm font-semibold text-slate-200 truncate">{profile.name}</span>
+              )}
             </button>
           </div>
 
@@ -1313,16 +1318,6 @@ export default function EditorClient({
             >
               <Download className="w-3.5 h-3.5" />
               Export ZIP
-            </button>
-
-            <button
-              onClick={() => signOut({ callbackUrl: "/" })}
-              title="Sign out"
-              aria-label="Sign out"
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 text-xs font-bold transition"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Sign out</span>
             </button>
           </div>
         </header>

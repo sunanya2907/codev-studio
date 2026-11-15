@@ -60,7 +60,7 @@ export default function PricingPage() {
             </h1>
           </div>
           <Link
-            href="/workspace"
+            href="/orchestrate"
             className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 transition"
             title="Close"
           >
