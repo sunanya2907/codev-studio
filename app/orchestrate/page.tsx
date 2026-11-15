@@ -9,6 +9,11 @@ export const dynamic = "force-dynamic";
 export default async function OrchestratePage() {
   const session = await auth();
 
+  // Signed in but the email code was not entered yet: go to the verification page.
+  if ((session?.user as { pendingVerification?: boolean } | undefined)?.pendingVerification) {
+    redirect("/verify");
+  }
+
   if (!session?.user?.id && !session?.user?.email) {
     redirect("/");
   }

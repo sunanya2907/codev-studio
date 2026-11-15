@@ -5,6 +5,7 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import type { Adapter } from "next-auth/adapters";
 import { db } from "@/lib/db";
 import bcrypt from "bcryptjs";
+import { verificationEnabled } from "@/lib/email-verify";
 
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -119,12 +120,24 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         try {
           const u = await db.user.findUnique({
             where: { id: token.sub },
-            select: { name: true, email: true, image: true },
+            select: { name: true, email: true, image: true, emailVerified: true },
           });
           if (u) {
             token.name = u.name;
             token.email = u.email;
             token.picture = u.image;
+            // Email verification: when it is switched on, the account is only usable after the
+            // 6-digit code from the email was entered (users.emailVerified is set).
+            let verified = !!u.emailVerified || !verificationEnabled();
+            if (!verified && process.env.EMAIL_VERIFY_GOOGLE === "false") {
+              // Optional: Google has already confirmed this address, so no code is needed.
+              const g = await db.account.findFirst({ where: { userId: token.sub, provider: "google" }, select: { provider: true } });
+              if (g) {
+                verified = true;
+                await db.user.update({ where: { id: token.sub }, data: { emailVerified: new Date() } });
+              }
+            }
+            token.emailVerified = verified;
           }
         } catch {
           // database unreachable: keep what the cookie already has
@@ -137,6 +150,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     // /api/orchestrate and /api/history answer 401 for logged-in users.
     async session({ session, token }) {
       if (session.user && token?.sub) {
+        // Not verified yet: the session carries NO id, email or name. Every API that needs
+        // `session.user.id` (or an admin email) therefore answers "sign in", and the editor
+        // page sends the person to /verify. Only the verify endpoints use `pendingId`.
+        if (token.emailVerified !== true) {
+          session.user = { pendingVerification: true, pendingId: token.sub } as unknown as typeof session.user;
+          return session;
+        }
         session.user.id = token.sub;
         session.user.name = (token.name as string | null | undefined) ?? session.user.name;
         session.user.email = (token.email as string | undefined) ?? session.user.email;

@@ -76,6 +76,16 @@ model VerificationToken {
   @@id([identifier, token])
 }
 
+// A 6-digit code emailed to the user before they may enter the account (see lib/email-verify.ts).
+// Only a hash of the code is stored.
+model EmailVerification {
+  userId    String   @id
+  codeHash  String
+  expiresAt DateTime
+  attempts  Int      @default(0)
+  sentAt    DateTime @default(now())
+}
+
 model Project {
   id           String   @id @default(uuid())
   userId       String
