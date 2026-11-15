@@ -4,7 +4,7 @@ import { AiNotConfiguredError, aiConfigured, generateText } from "@/lib/ai";
 
 export const maxDuration = 60;
 
-const MAX_PROMPT = 500;
+const MAX_PROMPT = 1000;
 
 export type ClarifyQuestion = { id: string; question: string; options: string[] };
 

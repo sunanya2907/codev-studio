@@ -4,8 +4,8 @@ import { AiNotConfiguredError, aiConfigured, generateText } from "@/lib/ai";
 
 export const maxDuration = 60;
 
-const MAX_IN = 500;
-const MAX_OUT = 500; // the editor's idea box holds 500 characters
+const MAX_IN = 1000;
+const MAX_OUT = 1000; // the editor's idea box holds 1000 characters
 
 const buildPrompt = (idea: string) => `Rewrite the website idea below into ONE clearer, richer request that a developer can build from.
 

@@ -60,6 +60,7 @@ import {
   Search,
   Settings,
   FileText,
+  ChevronDown,
 } from "lucide-react";
 
 // GoDaddy links for the sidebar "Domain & Hosting" plugin.
@@ -187,6 +188,9 @@ export default function EditorClient({
   const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
   const [showPricingModal, setShowPricingModal] = useState(false);
   const [domainQuery, setDomainQuery] = useState("");
+  const [pipelineOpen, setPipelineOpen] = useState(true); // open/close the agent list in the sidebar
+  // "Describe the Website Idea" box: grows taller as the text gets longer
+  const promptRef = useRef<HTMLTextAreaElement>(null);
   // Profile pop-up menu (opens above the profile logo at the bottom of the sidebar)
   const profileBtnRef = useRef<HTMLButtonElement>(null);
   const [profileMenuPos, setProfileMenuPos] = useState<{ left: number; bottom: number } | null>(null);
@@ -395,7 +399,7 @@ export default function EditorClient({
       if (!res.ok || typeof data?.prompt !== "string") {
         throw new Error(data?.error || "Could not enhance the prompt. Please try again.");
       }
-      setPrompt(data.prompt.slice(0, 500));
+      setPrompt(data.prompt.slice(0, 1000));
     } catch (err: any) {
       alert(err.message || "Could not enhance the prompt.");
     } finally {
@@ -550,6 +554,13 @@ export default function EditorClient({
     if (result.kind === "error") alert(result.error);
     setBillingLoading(null);
   };
+
+  useEffect(() => {
+    const el = promptRef.current;
+    if (!el) return;
+    el.style.height = "auto"; // shrink first so deleting text makes the box smaller again
+    el.style.height = `${el.scrollHeight}px`;
+  }, [prompt]);
 
   // Opens GoDaddy's domain search for the typed name (or GoDaddy's domains page if empty).
   const openGoDaddySearch = () => {
@@ -949,20 +960,28 @@ export default function EditorClient({
           {/* MULTI-AGENT PIPELINE (hides/shrinks with the sidebar) */}
           <div className="px-3 pb-3 pt-1 space-y-1.5">
             {sidebarOpen ? (
-              <div className="flex items-center justify-between px-1 pb-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              <button
+                onClick={() => setPipelineOpen((v) => !v)}
+                aria-expanded={pipelineOpen}
+                title={pipelineOpen ? "Hide agents" : "Show agents"}
+                className="group w-full flex items-center justify-between px-1 pb-1"
+              >
+                <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 group-hover:text-white transition">
                   Multi-Agent Pipeline
+                  <ChevronDown
+                    className={`w-3 h-3 transition-transform ${pipelineOpen ? "" : "-rotate-90"}`}
+                  />
                 </span>
                 <span className="text-[10px] text-emerald-400 flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                   {tier === "FREE" ? "1/5" : "5/5"}
                 </span>
-              </div>
+              </button>
             ) : (
               <div className="border-t border-slate-800/80 mb-2" />
             )}
 
-            {AGENTS.map((agent, index) => {
+            {(pipelineOpen || !sidebarOpen) && AGENTS.map((agent, index) => {
               const Icon = agent.icon;
               const isSelected = activeAgentIndex === index;
               const isLocked = tier === "FREE" && !agent.freeAccessible;
@@ -1025,10 +1044,10 @@ export default function EditorClient({
         </div>
 
         {/* Bottom: profile logo + nickname, with a Domain & Hosting button beside it */}
-        <div className="p-3 shrink-0">
+        <div className="px-3 py-2.5 shrink-0">
           <div
             className={`flex ${
-              sidebarOpen ? "items-center justify-between gap-2" : "flex-col items-center gap-3"
+              sidebarOpen ? "items-center justify-between gap-2" : "flex-col items-center gap-2"
             }`}
           >
             <button
@@ -1040,13 +1059,17 @@ export default function EditorClient({
               title="Account"
               aria-label="Account menu"
               aria-expanded={profileMenuOpen}
-              className="flex items-center gap-2.5 min-w-0 max-w-full rounded-full p-1 pr-3 hover:bg-slate-800/60 transition"
+              className="flex items-center gap-2 min-w-0 rounded-lg px-1.5 py-1 hover:bg-slate-800/60 transition"
             >
-              <span className="rounded-full ring-2 ring-slate-800 shrink-0">
-                <Avatar name={profile.name} image={profile.image} size={40} />
-              </span>
+              <Avatar name={profile.name} image={profile.image} size={26} />
               {sidebarOpen && (
-                <span className="text-sm font-semibold text-slate-200 truncate">{profile.name}</span>
+                <span className="flex items-center gap-1 min-w-0 text-[13px]">
+                  <span className="font-semibold text-slate-200 truncate">{profile.name}</span>
+                  <span className="text-slate-500 shrink-0">
+                    · {tier === "FREE" ? "Free" : tier.charAt(0) + tier.slice(1).toLowerCase()}
+                  </span>
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                </span>
               )}
             </button>
 
@@ -1059,9 +1082,9 @@ export default function EditorClient({
               title="Domain & Hosting"
               aria-label="Domain and hosting"
               aria-expanded={domainMenuOpen}
-              className="shrink-0 w-10 h-10 rounded-full bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center text-cyan-300 transition"
+              className="shrink-0 w-7 h-7 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center text-cyan-300 transition"
             >
-              <Globe className="w-4 h-4" />
+              <Globe className="w-3.5 h-3.5" />
             </button>
           </div>
 
@@ -1261,16 +1284,17 @@ export default function EditorClient({
                 <Sparkles className="w-3.5 h-3.5" /> Describe the Website Idea
               </label>
               <span className="text-[10px] text-slate-500">
-                {prompt.length}/500
+                {prompt.length}/1000
               </span>
             </div>
             <textarea
+              ref={promptRef}
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               rows={4}
-              maxLength={500}
+              maxLength={1000}
               placeholder="e.g. A task manager with PostgreSQL database, user auth, and analytics..."
-              className="select-text w-full bg-[#0B0F19] border border-slate-800/90 rounded-xl p-3 text-base sm:text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-violet-500 resize-none"
+              className="select-text w-full bg-[#0B0F19] border border-slate-800/90 rounded-xl p-3 text-base sm:text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-violet-500 resize-none overflow-y-auto max-h-[60vh]"
             />
 
             <div className="mt-3 flex items-stretch gap-2">
@@ -1582,7 +1606,7 @@ export default function EditorClient({
         mode={voiceMode}
         context={voiceContext}
         onClose={() => setShowVoice(false)}
-        onApply={(text) => setPrompt(text.slice(0, 500))}
+        onApply={(text) => setPrompt(text.slice(0, 1000))}
         onApplyEdit={applyVoiceEdit}
         onBalanceChange={(n) => setTokenBalance(n)}
         onNeedTokens={() => {
