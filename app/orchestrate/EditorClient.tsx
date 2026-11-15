@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import { signOut } from "next-auth/react";
 import { isQaPending } from "@/lib/qa-review";
@@ -58,6 +58,8 @@ import {
   LogOut,
   MessageSquarePlus,
   Search,
+  Settings,
+  FileText,
 } from "lucide-react";
 
 // GoDaddy links for the sidebar "Domain & Hosting" plugin.
@@ -185,6 +187,25 @@ export default function EditorClient({
   const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
   const [showPricingModal, setShowPricingModal] = useState(false);
   const [domainQuery, setDomainQuery] = useState("");
+  // Profile pop-up menu (opens above the profile logo at the bottom of the sidebar)
+  const profileBtnRef = useRef<HTMLButtonElement>(null);
+  const [profileMenuPos, setProfileMenuPos] = useState<{ left: number; bottom: number } | null>(null);
+  const profileMenuOpen = profileMenuPos !== null;
+  const toggleProfileMenu = () => {
+    if (profileMenuOpen) return setProfileMenuPos(null);
+    const r = profileBtnRef.current?.getBoundingClientRect();
+    if (!r) return;
+    setProfileMenuPos({
+      left: Math.max(8, Math.min(r.left, window.innerWidth - 264)),
+      bottom: window.innerHeight - r.top + 8,
+    });
+  };
+  useEffect(() => {
+    if (!profileMenuOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setProfileMenuPos(null);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [profileMenuOpen]);
   const [activeTab, setActiveTab] = useState<"editor" | "preview">("editor");
   const [activeAgentIndex, setActiveAgentIndex] = useState<number>(0);
   const [flowMode, setFlowMode] = useState<"diagram" | "text">("diagram"); // pseudocode & flowchart view
@@ -1042,17 +1063,86 @@ export default function EditorClient({
             </a>
           )}
 
-          {/* Profile: logo only. Click opens the profile settings. */}
+          {/* Profile: logo only. Click opens a pop-up menu above it. */}
           <div className={`flex ${sidebarOpen ? "justify-start" : "justify-center"}`}>
             <button
-              onClick={() => setShowProfile(true)}
-              title="Profile settings"
-              aria-label="Profile settings"
+              ref={profileBtnRef}
+              onClick={toggleProfileMenu}
+              title="Account"
+              aria-label="Account menu"
+              aria-expanded={profileMenuOpen}
               className="rounded-full ring-2 ring-slate-800 hover:ring-violet-500/60 transition"
             >
               <Avatar name={profile.name} image={profile.image} size={40} />
             </button>
           </div>
+
+          {profileMenuPos && (
+            <>
+              <button
+                aria-label="Close menu"
+                className="fixed inset-0 z-40 cursor-default"
+                onClick={() => setProfileMenuPos(null)}
+              />
+              <div
+                role="menu"
+                style={{ left: profileMenuPos.left, bottom: profileMenuPos.bottom }}
+                className="fixed z-50 w-64 rounded-2xl bg-[#0D1322] border border-slate-800 p-2 shadow-2xl"
+              >
+                <div className="px-3 pt-2 pb-2.5">
+                  <p className="text-xs text-slate-400 truncate">{profile.email || profile.name}</p>
+                  <p className="mt-1 text-[11px] text-slate-500 flex items-center gap-1.5">
+                    <Sparkles className="w-3 h-3 text-amber-400" />
+                    {tier === "FREE" ? "Free Plan" : `${tier} Plan`} · {tokenBalance} / {maxTokensForPlan} tokens left
+                  </p>
+                </div>
+
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setProfileMenuPos(null);
+                    setShowProfile(true);
+                  }}
+                  className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-slate-200 hover:bg-slate-800/70 transition"
+                >
+                  <Settings className="w-4 h-4 text-slate-400" /> Profile settings
+                </button>
+                <Link
+                  role="menuitem"
+                  href="/terms"
+                  target="_blank"
+                  onClick={() => setProfileMenuPos(null)}
+                  className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-slate-200 hover:bg-slate-800/70 transition"
+                >
+                  <FileText className="w-4 h-4 text-slate-400" /> Terms &amp; Conditions
+                </Link>
+
+                <div className="my-1.5 border-t border-slate-800" />
+
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setProfileMenuPos(null);
+                    setShowPricingModal(true);
+                  }}
+                  className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-slate-200 hover:bg-slate-800/70 transition"
+                >
+                  <Crown className="w-4 h-4 text-amber-400" />
+                  {tier === "FREE" ? "Upgrade plan" : "Buy extra tokens"}
+                </button>
+
+                <div className="my-1.5 border-t border-slate-800" />
+
+                <button
+                  role="menuitem"
+                  onClick={() => signOut({ callbackUrl: "/" })}
+                  className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-slate-200 hover:bg-slate-800/70 transition"
+                >
+                  <LogOut className="w-4 h-4 text-slate-400" /> Log out
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </aside>
 
