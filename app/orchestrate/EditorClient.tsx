@@ -206,6 +206,26 @@ export default function EditorClient({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [profileMenuOpen]);
+
+  // Domain & Hosting pop-up (opens above the globe button beside the profile name)
+  const domainBtnRef = useRef<HTMLButtonElement>(null);
+  const [domainMenuPos, setDomainMenuPos] = useState<{ left: number; bottom: number } | null>(null);
+  const domainMenuOpen = domainMenuPos !== null;
+  const toggleDomainMenu = () => {
+    if (domainMenuOpen) return setDomainMenuPos(null);
+    const r = domainBtnRef.current?.getBoundingClientRect();
+    if (!r) return;
+    setDomainMenuPos({
+      left: Math.max(8, Math.min(r.right - 288, window.innerWidth - 296)),
+      bottom: window.innerHeight - r.top + 8,
+    });
+  };
+  useEffect(() => {
+    if (!domainMenuOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setDomainMenuPos(null);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [domainMenuOpen]);
   const [activeTab, setActiveTab] = useState<"editor" | "preview">("editor");
   const [activeAgentIndex, setActiveAgentIndex] = useState<number>(0);
   const [flowMode, setFlowMode] = useState<"diagram" | "text">("diagram"); // pseudocode & flowchart view
@@ -1004,70 +1024,19 @@ export default function EditorClient({
           </div>
         </div>
 
-        {/* Bottom: Domain & Hosting plugin (GoDaddy) + profile logo */}
-        <div className="p-3 shrink-0 space-y-3">
-          {sidebarOpen ? (
-            <div className="rounded-2xl bg-slate-900/70 border border-slate-800 p-3">
-              <div className="flex items-center gap-2 mb-2">
-                <Globe className="w-4 h-4 text-cyan-300 shrink-0" />
-                <span className="text-xs font-bold text-white">Domain &amp; Hosting</span>
-              </div>
-              <div className="flex gap-1.5 mb-2">
-                <input
-                  value={domainQuery}
-                  onChange={(e) => setDomainQuery(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && openGoDaddySearch()}
-                  placeholder="yourbrand.com"
-                  aria-label="Domain name to search on GoDaddy"
-                  className="min-w-0 flex-1 bg-[#0B0F19] border border-slate-800 rounded-lg px-2 py-1.5 text-base sm:text-[11px] text-white placeholder:text-slate-600 focus:outline-none focus:border-cyan-500/50 select-text"
-                />
-                <button
-                  onClick={openGoDaddySearch}
-                  className="px-2 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 text-cyan-300 transition"
-                  title="Search this domain on GoDaddy"
-                  aria-label="Search this domain on GoDaddy"
-                >
-                  <Search className="w-3.5 h-3.5" />
-                </button>
-              </div>
-              <div className="grid grid-cols-2 gap-1.5">
-                <a
-                  href={GODADDY_PRICING_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-1 py-1.5 rounded-lg bg-slate-800/70 hover:bg-slate-800 text-[11px] font-semibold text-slate-200 transition"
-                >
-                  <Coins className="w-3 h-3 text-amber-400" /> Pricing
-                </a>
-                <a
-                  href={GODADDY_HOSTING_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-1 py-1.5 rounded-lg bg-slate-800/70 hover:bg-slate-800 text-[11px] font-semibold text-slate-200 transition"
-                >
-                  <Server className="w-3 h-3 text-emerald-400" /> Hosting
-                </a>
-              </div>
-              <p className="mt-2 text-[10px] text-slate-500">Opens GoDaddy in a new tab.</p>
-            </div>
-          ) : (
-            <a
-              href={GODADDY_DOMAINS_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-full py-3 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-300 hover:bg-cyan-500/20 transition"
-              title="Find a domain and hosting on GoDaddy"
-              aria-label="Find a domain and hosting on GoDaddy"
-            >
-              <Globe className="w-4 h-4" />
-            </a>
-          )}
-
-          {/* Profile: logo only. Click opens a pop-up menu above it. */}
-          <div className={`flex ${sidebarOpen ? "justify-start" : "justify-center"}`}>
+        {/* Bottom: profile logo + nickname, with a Domain & Hosting button beside it */}
+        <div className="p-3 shrink-0">
+          <div
+            className={`flex ${
+              sidebarOpen ? "items-center justify-between gap-2" : "flex-col items-center gap-3"
+            }`}
+          >
             <button
               ref={profileBtnRef}
-              onClick={toggleProfileMenu}
+              onClick={() => {
+                setDomainMenuPos(null);
+                toggleProfileMenu();
+              }}
               title="Account"
               aria-label="Account menu"
               aria-expanded={profileMenuOpen}
@@ -1080,7 +1049,77 @@ export default function EditorClient({
                 <span className="text-sm font-semibold text-slate-200 truncate">{profile.name}</span>
               )}
             </button>
+
+            <button
+              ref={domainBtnRef}
+              onClick={() => {
+                setProfileMenuPos(null);
+                toggleDomainMenu();
+              }}
+              title="Domain & Hosting"
+              aria-label="Domain and hosting"
+              aria-expanded={domainMenuOpen}
+              className="shrink-0 w-10 h-10 rounded-full bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center text-cyan-300 transition"
+            >
+              <Globe className="w-4 h-4" />
+            </button>
           </div>
+
+          {domainMenuPos && (
+            <>
+              <button
+                aria-label="Close domain and hosting"
+                className="fixed inset-0 z-40 cursor-default"
+                onClick={() => setDomainMenuPos(null)}
+              />
+              <div
+                style={{ left: domainMenuPos.left, bottom: domainMenuPos.bottom }}
+                className="fixed z-50 w-72 rounded-2xl bg-[#0D1322] border border-slate-800 p-3 shadow-2xl"
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <Globe className="w-4 h-4 text-cyan-300 shrink-0" />
+                  <span className="text-xs font-bold text-white">Domain &amp; Hosting</span>
+                </div>
+                <div className="flex gap-1.5 mb-2">
+                  <input
+                    value={domainQuery}
+                    onChange={(e) => setDomainQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && openGoDaddySearch()}
+                    placeholder="yourbrand.com"
+                    aria-label="Domain name to search on GoDaddy"
+                    className="min-w-0 flex-1 bg-[#0B0F19] border border-slate-800 rounded-lg px-2 py-1.5 text-base sm:text-[11px] text-white placeholder:text-slate-600 focus:outline-none focus:border-cyan-500/50 select-text"
+                  />
+                  <button
+                    onClick={openGoDaddySearch}
+                    className="px-2 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 text-cyan-300 transition"
+                    title="Search this domain on GoDaddy"
+                    aria-label="Search this domain on GoDaddy"
+                  >
+                    <Search className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <a
+                    href={GODADDY_PRICING_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-1 py-1.5 rounded-lg bg-slate-800/70 hover:bg-slate-800 text-[11px] font-semibold text-slate-200 transition"
+                  >
+                    <Coins className="w-3 h-3 text-amber-400" /> Pricing
+                  </a>
+                  <a
+                    href={GODADDY_HOSTING_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-1 py-1.5 rounded-lg bg-slate-800/70 hover:bg-slate-800 text-[11px] font-semibold text-slate-200 transition"
+                  >
+                    <Server className="w-3 h-3 text-emerald-400" /> Hosting
+                  </a>
+                </div>
+                <p className="mt-2 text-[10px] text-slate-500">Opens GoDaddy in a new tab.</p>
+              </div>
+            </>
+          )}
 
           {profileMenuPos && (
             <>
