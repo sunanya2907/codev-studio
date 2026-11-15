@@ -46,7 +46,7 @@ add(["plus"], H("Add", "Adds something new, like extra tokens."));
 add(["x", "close"], H("Close", "Closes this window or clears the current item."));
 add(["crown"], H("Premium plan", "A paid plan with more tokens and extra features."));
 add(["file-text", "file"], H("Document", "The written requirements (SRS) for your app."));
-add(["globe"], H("Domain", "Search for a web address (domain name) for your app and check if it is free."));
+add(["globe"], H("Make your website online", "Shows the steps to register a domain, host your website and launch it."));
 add(["search"], H("Search", "Searches for what you typed."));
 add(["arrow-right"], H("Continue", "Takes you to the next step or page."));
 add(["mail"], H("Email", "Sign in or contact us with an email address."));

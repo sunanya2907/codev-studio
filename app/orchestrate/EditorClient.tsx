@@ -62,17 +62,125 @@ import {
   Wand2,
   LogOut,
   MessageSquarePlus,
-  Search,
   Settings,
   FileText,
   ChevronDown,
 } from "lucide-react";
 
 // GoDaddy links for the sidebar "Domain & Hosting" plugin.
-const GODADDY_DOMAINS_URL = "https://www.godaddy.com/domains";
-const GODADDY_SEARCH_URL = "https://www.godaddy.com/domainsearch/find";
-const GODADDY_PRICING_URL = "https://www.godaddy.com/websites/website-builder/plans-and-pricing";
-const GODADDY_HOSTING_URL = "https://www.godaddy.com/hosting/web-hosting";
+// The steps shown when someone clicks the globe ("Make your website online") at the bottom of the sidebar.
+// "Complete step" on a step opens that step's list of choices (at least 5): the user picks the one they
+// prefer with "Select this", which opens that provider's website in a new tab.
+type StepOption = { id: string; name: string; text: string; host: string; url: string };
+const opt = (id: string, name: string, text: string, host: string, url: string): StepOption => ({ id, name, text, host, url });
+
+const DOMAIN_STEPS: { title: string; text: string; options: StepOption[] }[] = [
+  {
+    title: "Domain Registration",
+    text: "Purchase a domain name, such as example.com, from GoDaddy or Namecheap.",
+    options: [
+      opt("godaddy", "GoDaddy", "Largest global domain registrar", "godaddy.com", "https://www.godaddy.com/domains"),
+      opt("namecheap", "Namecheap", "Domains, hosting and SSL", "namecheap.com", "https://www.namecheap.com"),
+      opt("dynadot", "Dynadot", "Domain registration and management", "dynadot.com", "https://www.dynadot.com"),
+      opt("squarespace", "Squarespace", "Domains and website building", "squarespace.com/domains", "https://www.squarespace.com/domains"),
+      opt("hostinger", "Hostinger", "Domains, hosting and website building", "hostinger.com", "https://www.hostinger.com"),
+    ],
+  },
+  {
+    title: "Choose a Hosting Server",
+    text: "Select where your website will run: VPS, dedicated server, cloud hosting or shared hosting.",
+    options: [
+      opt("hostinger", "Hostinger", "Shared, cloud and VPS hosting at low prices", "hostinger.com", "https://www.hostinger.com"),
+      opt("digitalocean", "DigitalOcean", "Simple cloud servers for developers", "digitalocean.com", "https://www.digitalocean.com"),
+      opt("aws", "Amazon Web Services", "The largest cloud platform, servers of any size", "aws.amazon.com", "https://aws.amazon.com"),
+      opt("vultr", "Vultr", "Cloud and bare-metal servers in many locations", "vultr.com", "https://www.vultr.com"),
+      opt("linode", "Linode (Akamai)", "Cloud VPS with straightforward pricing", "linode.com", "https://www.linode.com"),
+      opt("hetzner", "Hetzner", "Low-cost dedicated and cloud servers", "hetzner.com", "https://www.hetzner.com"),
+    ],
+  },
+  {
+    title: "Server Configuration",
+    text: "Configure the operating system, CPU, RAM, storage, firewall and required software.",
+    options: [
+      opt("ubuntu", "Ubuntu Server", "Official guides for setting up a Linux server", "ubuntu.com/server", "https://ubuntu.com/server"),
+      opt("do-tutorials", "DigitalOcean Tutorials", "Step-by-step server setup and security guides", "digitalocean.com/community/tutorials", "https://www.digitalocean.com/community/tutorials"),
+      opt("cpanel", "cPanel", "Popular control panel to manage a server with clicks", "cpanel.net", "https://www.cpanel.net"),
+      opt("plesk", "Plesk", "Control panel for sites, email and security", "plesk.com", "https://www.plesk.com"),
+      opt("coolify", "Coolify", "Self-hosted panel to run apps on your own server", "coolify.io", "https://coolify.io"),
+      opt("webmin", "Webmin", "Free web-based tool to administer a Linux server", "webmin.com", "https://webmin.com"),
+    ],
+  },
+  {
+    title: "Upload / Deploy Website",
+    text: "Upload your website files or deploy your application from GitHub.",
+    options: [
+      opt("github", "GitHub", "Store your code and connect it to a host", "github.com", "https://github.com"),
+      opt("vercel", "Vercel", "Deploy Next.js apps straight from GitHub", "vercel.com", "https://vercel.com"),
+      opt("netlify", "Netlify", "Deploy sites and apps from Git in minutes", "netlify.com", "https://www.netlify.com"),
+      opt("render", "Render", "Host web apps, APIs and databases", "render.com", "https://render.com"),
+      opt("railway", "Railway", "Deploy apps and databases with little setup", "railway.com", "https://railway.com"),
+      opt("cf-pages", "Cloudflare Pages", "Free hosting for fast static and full-stack sites", "pages.cloudflare.com", "https://pages.cloudflare.com"),
+    ],
+  },
+  {
+    title: "Connect Domain (DNS)",
+    text: "Point your domain to your hosting server using DNS records.",
+    options: [
+      opt("cloudflare", "Cloudflare", "Fast, free DNS with extra protection", "cloudflare.com", "https://www.cloudflare.com"),
+      opt("godaddy-dns", "GoDaddy DNS", "Manage records where you bought the domain", "godaddy.com", "https://www.godaddy.com"),
+      opt("namecheap-dns", "Namecheap DNS", "Manage records from your Namecheap account", "namecheap.com", "https://www.namecheap.com"),
+      opt("route53", "Amazon Route 53", "Reliable DNS from Amazon Web Services", "aws.amazon.com/route53", "https://aws.amazon.com/route53"),
+      opt("gcloud-dns", "Google Cloud DNS", "Managed DNS on Google's network", "cloud.google.com/dns", "https://cloud.google.com/dns"),
+      opt("dnsimple", "DNSimple", "Easy DNS management with clear tools", "dnsimple.com", "https://dnsimple.com"),
+    ],
+  },
+  {
+    title: "Configure SSL Certificate",
+    text: "Install SSL so your website uses HTTPS securely.",
+    options: [
+      opt("letsencrypt", "Let's Encrypt", "Free, automatic HTTPS certificates", "letsencrypt.org", "https://letsencrypt.org"),
+      opt("zerossl", "ZeroSSL", "Free and paid certificates with an easy dashboard", "zerossl.com", "https://zerossl.com"),
+      opt("cf-ssl", "Cloudflare SSL", "HTTPS for your site when you use Cloudflare", "cloudflare.com/ssl", "https://www.cloudflare.com/ssl"),
+      opt("digicert", "DigiCert", "Paid certificates for businesses", "digicert.com", "https://www.digicert.com"),
+      opt("sectigo", "Sectigo", "Paid certificates with wide browser support", "sectigo.com", "https://www.sectigo.com"),
+      opt("sslcom", "SSL.com", "Certificates for sites, email and code", "ssl.com", "https://www.ssl.com"),
+    ],
+  },
+  {
+    title: "Database and Backend Configuration",
+    text: "Connect databases, APIs, authentication and backend services, if required.",
+    options: [
+      opt("supabase", "Supabase", "PostgreSQL database with login and storage", "supabase.com", "https://supabase.com"),
+      opt("neon", "Neon", "Serverless PostgreSQL that scales to zero", "neon.com", "https://neon.com"),
+      opt("planetscale", "PlanetScale", "Managed MySQL and Postgres databases", "planetscale.com", "https://planetscale.com"),
+      opt("mongodb", "MongoDB Atlas", "Hosted MongoDB database in the cloud", "mongodb.com/atlas", "https://www.mongodb.com/atlas"),
+      opt("firebase", "Firebase", "Google's database, login and backend tools", "firebase.google.com", "https://firebase.google.com"),
+      opt("appwrite", "Appwrite", "Open-source backend with auth and databases", "appwrite.io", "https://appwrite.io"),
+    ],
+  },
+  {
+    title: "Testing and Launch",
+    text: "Test performance, security, mobile responsiveness and availability before launching.",
+    options: [
+      opt("pagespeed", "PageSpeed Insights", "Google's speed and mobile test for your page", "pagespeed.web.dev", "https://pagespeed.web.dev"),
+      opt("gtmetrix", "GTmetrix", "Speed reports with clear fixes", "gtmetrix.com", "https://gtmetrix.com"),
+      opt("webpagetest", "WebPageTest", "Detailed load tests from many locations", "webpagetest.org", "https://www.webpagetest.org"),
+      opt("ssllabs", "Qualys SSL Labs", "Checks your HTTPS and server security", "ssllabs.com", "https://www.ssllabs.com/ssltest"),
+      opt("gsc", "Google Search Console", "Get your site indexed and watch its health", "search.google.com/search-console", "https://search.google.com/search-console"),
+      opt("pingdom", "Pingdom", "Monitors that your site stays online", "pingdom.com", "https://www.pingdom.com"),
+    ],
+  },
+];
+
+// Providers that cover most steps in one account (domain, hosting, DNS, HTTPS, deploy). Shown below the steps.
+const ALL_IN_ONE: StepOption[] = [
+  opt("hostinger", "Hostinger", "Domain, hosting and free HTTPS in one account", "hostinger.com", "https://www.hostinger.com"),
+  opt("godaddy", "GoDaddy", "Domains, hosting, SSL certificates and DNS together", "godaddy.com", "https://www.godaddy.com"),
+  opt("namecheap", "Namecheap", "Domains, hosting, SSL and DNS from one dashboard", "namecheap.com", "https://www.namecheap.com"),
+  opt("vercel", "Vercel", "Deploy from GitHub, buy a domain, automatic HTTPS, add a database", "vercel.com", "https://vercel.com"),
+  opt("cloudflare", "Cloudflare", "Domain at cost, DNS, HTTPS and Pages hosting", "cloudflare.com", "https://www.cloudflare.com"),
+  opt("netlify", "Netlify", "Deploy from Git, custom domains and HTTPS built in", "netlify.com", "https://www.netlify.com"),
+];
 
 interface HistoryItem {
   id: string;
@@ -211,7 +319,6 @@ export default function EditorClient({
     }
   };
   const [showPricingModal, setShowPricingModal] = useState(false);
-  const [domainQuery, setDomainQuery] = useState("");
   // Agent list in the sidebar: open/close, remembered across refreshes
   const PIPELINE_OPEN_KEY = "buildcore:pipelineOpen";
   const [pipelineOpen, setPipelineOpenState] = useState(true);
@@ -254,25 +361,94 @@ export default function EditorClient({
     return () => window.removeEventListener("keydown", onKey);
   }, [profileMenuOpen]);
 
-  // Domain & Hosting pop-up (opens above the globe button beside the profile name)
-  const domainBtnRef = useRef<HTMLButtonElement>(null);
-  const [domainMenuPos, setDomainMenuPos] = useState<{ left: number; bottom: number } | null>(null);
-  const domainMenuOpen = domainMenuPos !== null;
-  const toggleDomainMenu = () => {
-    if (domainMenuOpen) return setDomainMenuPos(null);
-    const r = domainBtnRef.current?.getBoundingClientRect();
-    if (!r) return;
-    setDomainMenuPos({
-      left: Math.max(8, Math.min(r.right - 288, window.innerWidth - 296)),
-      bottom: window.innerHeight - r.top + 8,
-    });
+  // "Make your website online": a centered pop-up with the launch steps (opened by the globe button).
+  const [domainOpen, setDomainOpen] = useState(false);
+  const [domainView, setDomainView] = useState<"steps" | number>("steps"); // "steps" or the index of the open step
+  const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({}); // step title (or "all-in-one") -> chosen option id
+  const [doneSteps, setDoneSteps] = useState<string[]>([]); // titles of the steps the user completed
+  const activeStep = typeof domainView === "number" ? DOMAIN_STEPS[domainView] : null;
+  const doneCount = DOMAIN_STEPS.filter((st) => doneSteps.includes(st.title)).length;
+  const openDomain = () => {
+    setProfileMenuPos(null);
+    setDomainView("steps"); // always open on the steps
+    setDomainOpen(true);
   };
+  const setStepDone = (title: string, done: boolean) =>
+    setDoneSteps((cur) => (done ? (cur.includes(title) ? cur : [...cur, title]) : cur.filter((t) => t !== title)));
+
+  // Progress is remembered in this browser (per account email), so it is still there after a reload.
+  const launchKey = `bc-launch:${userEmail || "me"}`;
+  const [launchLoaded, setLaunchLoaded] = useState(false);
   useEffect(() => {
-    if (!domainMenuOpen) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setDomainMenuPos(null);
+    try {
+      const raw = localStorage.getItem(launchKey);
+      const saved = raw ? JSON.parse(raw) : null;
+      if (saved && typeof saved === "object") {
+        if (saved.selected && typeof saved.selected === "object") setSelectedOptions(saved.selected);
+        if (Array.isArray(saved.done)) setDoneSteps(saved.done.filter((x: unknown): x is string => typeof x === "string"));
+      }
+    } catch {
+      /* storage unavailable: start empty */
+    }
+    setLaunchLoaded(true);
+  }, [launchKey]);
+  useEffect(() => {
+    if (!launchLoaded) return; // do not overwrite saved progress before it has been read
+    try {
+      localStorage.setItem(launchKey, JSON.stringify({ selected: selectedOptions, done: doneSteps }));
+    } catch {
+      /* storage unavailable: still works for this visit */
+    }
+  }, [launchLoaded, launchKey, selectedOptions, doneSteps]);
+  useEffect(() => {
+    if (!domainOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setDomainOpen(false);
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [domainMenuOpen]);
+  }, [domainOpen]);
+
+  // One provider card, used by the step choices and by the all-in-one list.
+  const optionCard = (o: StepOption, i: number, selected: boolean, onSelect: () => void) => (
+    <li
+      key={o.id}
+      className={`rounded-xl border p-3 transition ${
+        selected ? "border-cyan-500/60 bg-cyan-500/10" : "border-slate-800 bg-slate-900/60"
+      }`}
+    >
+      <div className="flex items-start gap-3">
+        <span className="w-9 h-9 shrink-0 rounded-lg bg-slate-800 text-cyan-300 text-sm font-bold flex items-center justify-center">
+          {o.name.charAt(0)}
+        </span>
+        <div className="min-w-0">
+          <p className="text-xs font-bold text-white">
+            {i + 1}. {o.name}
+          </p>
+          <p className="text-[11px] text-slate-400">{o.text}</p>
+          <a
+            href={o.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[11px] text-cyan-300 hover:underline break-all"
+          >
+            {o.host} ↗
+          </a>
+        </div>
+      </div>
+      <a
+        href={o.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={onSelect}
+        className={`mt-2.5 w-full flex items-center justify-center py-2 rounded-lg text-[11px] font-bold transition ${
+          selected
+            ? "bg-cyan-500/20 border border-cyan-500/40 text-cyan-200"
+            : "bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-500 text-white hover:brightness-110"
+        }`}
+      >
+        {selected ? "Selected" : "Select this"}
+      </a>
+    </li>
+  );
   const [activeTab, setActiveTab] = useState<"editor" | "preview">("editor");
   // Focus layout: typing the idea widens the idea panel (the main area shrinks); looking at the
   // Live Preview narrows the idea panel (the main area grows). Desktop only.
@@ -658,15 +834,6 @@ export default function EditorClient({
     el.style.height = "auto"; // shrink first so deleting text makes the box smaller again
     el.style.height = `${el.scrollHeight}px`;
   }, [prompt, panelMode]);
-
-  // Opens GoDaddy's domain search for the typed name (or GoDaddy's domains page if empty).
-  const openGoDaddySearch = () => {
-    const q = domainQuery.trim();
-    const url = q
-      ? `${GODADDY_SEARCH_URL}?domainToCheck=${encodeURIComponent(q)}`
-      : GODADDY_DOMAINS_URL;
-    window.open(url, "_blank", "noopener,noreferrer");
-  };
 
   // Full App Build Handler (Enforces Token Deduction & Free Plan Visibility)
   // Step 1: ask 3 questions about the idea (free), then build with the answers.
@@ -1205,10 +1372,7 @@ export default function EditorClient({
           >
             <button
               ref={profileBtnRef}
-              onClick={() => {
-                setDomainMenuPos(null);
-                toggleProfileMenu();
-              }}
+              onClick={toggleProfileMenu}
               title="Account"
               aria-label="Account menu"
               aria-expanded={profileMenuOpen}
@@ -1227,75 +1391,20 @@ export default function EditorClient({
             </button>
 
             <button
-              ref={domainBtnRef}
-              onClick={() => {
-                setProfileMenuPos(null);
-                toggleDomainMenu();
-              }}
-              title="Domain & Hosting"
-              aria-label="Domain and hosting"
-              aria-expanded={domainMenuOpen}
-              className="shrink-0 w-7 h-7 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center text-cyan-300 transition"
+              onClick={openDomain}
+              title="Make your website online"
+              aria-label="Make your website online"
+              aria-haspopup="dialog"
+              className="relative shrink-0 w-7 h-7 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center text-cyan-300 transition"
             >
               <Globe className="w-3.5 h-3.5" />
+              {doneCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[1.6rem] h-4 px-1 rounded-full bg-emerald-500 text-slate-950 text-[9px] font-bold flex items-center justify-center">
+                  {doneCount}/{DOMAIN_STEPS.length}
+                </span>
+              )}
             </button>
           </div>
-
-          {domainMenuPos && (
-            <>
-              <button
-                aria-label="Close domain and hosting"
-                className="fixed inset-0 z-40 cursor-default"
-                onClick={() => setDomainMenuPos(null)}
-              />
-              <div
-                style={{ left: domainMenuPos.left, bottom: domainMenuPos.bottom }}
-                className="fixed z-50 w-72 rounded-2xl bg-[#0D1322] border border-slate-800 p-3 shadow-2xl"
-              >
-                <div className="flex items-center gap-2 mb-2">
-                  <Globe className="w-4 h-4 text-cyan-300 shrink-0" />
-                  <span className="text-xs font-bold text-white">Domain &amp; Hosting</span>
-                </div>
-                <div className="flex gap-1.5 mb-2">
-                  <input
-                    value={domainQuery}
-                    onChange={(e) => setDomainQuery(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && openGoDaddySearch()}
-                    placeholder="yourbrand.com"
-                    aria-label="Domain name to search on GoDaddy"
-                    className="min-w-0 flex-1 bg-[#0B0F19] border border-slate-800 rounded-lg px-2 py-1.5 text-base sm:text-[11px] text-white placeholder:text-slate-600 focus:outline-none focus:border-cyan-500/50 select-text"
-                  />
-                  <button
-                    onClick={openGoDaddySearch}
-                    className="px-2 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 text-cyan-300 transition"
-                    title="Search this domain on GoDaddy"
-                    aria-label="Search this domain on GoDaddy"
-                  >
-                    <Search className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-                <div className="grid grid-cols-2 gap-1.5">
-                  <a
-                    href={GODADDY_PRICING_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center justify-center gap-1 py-1.5 rounded-lg bg-slate-800/70 hover:bg-slate-800 text-[11px] font-semibold text-slate-200 transition"
-                  >
-                    <Coins className="w-3 h-3 text-amber-400" /> Pricing
-                  </a>
-                  <a
-                    href={GODADDY_HOSTING_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center justify-center gap-1 py-1.5 rounded-lg bg-slate-800/70 hover:bg-slate-800 text-[11px] font-semibold text-slate-200 transition"
-                  >
-                    <Server className="w-3 h-3 text-emerald-400" /> Hosting
-                  </a>
-                </div>
-                <p className="mt-2 text-[10px] text-slate-500">Opens GoDaddy in a new tab.</p>
-              </div>
-            </>
-          )}
 
           {profileMenuPos && (
             <>
@@ -1717,6 +1826,161 @@ export default function EditorClient({
           </div>
         </footer>
       </main>
+
+      {domainOpen && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Make your website online"
+        >
+          <button
+            aria-label="Close"
+            onClick={() => setDomainOpen(false)}
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm cursor-default"
+          />
+          <div className="relative w-full max-w-2xl max-h-[88vh] flex flex-col rounded-2xl bg-[#0D1322] border border-slate-800 shadow-2xl">
+            <div className="flex items-start justify-between gap-3 px-5 pt-4 pb-3 border-b border-slate-800 shrink-0">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <Globe className="w-4 h-4 text-cyan-300 shrink-0" />
+                  <h2 className="text-sm font-bold text-white">Make your website online</h2>
+                </div>
+                <p className="mt-1 text-[11px] text-slate-400">Follow these steps in order. Your progress is saved here.</p>
+              </div>
+              <button
+                onClick={() => setDomainOpen(false)}
+                aria-label="Close"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/70 transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="px-5 py-2.5 border-b border-slate-800 flex items-center gap-3 shrink-0">
+              <div className="flex-1 h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-cyan-400 transition-all duration-300"
+                  style={{ width: `${(doneCount / DOMAIN_STEPS.length) * 100}%` }}
+                />
+              </div>
+              <span className="text-[11px] text-slate-400 shrink-0">
+                {doneCount}/{DOMAIN_STEPS.length} completed
+              </span>
+            </div>
+
+            <div className="overflow-y-auto">
+              {domainView === "steps" || !activeStep ? (
+                <>
+                  <ol className="px-5 py-4 space-y-4">
+                    {DOMAIN_STEPS.map((step, i) => {
+                      const done = doneSteps.includes(step.title);
+                      const picked = step.options.find((o) => o.id === selectedOptions[step.title]);
+                      return (
+                        <li key={step.title} className="flex items-start gap-3">
+                          <span
+                            className={`mt-0.5 w-5 h-5 shrink-0 rounded-full border text-[10px] font-bold flex items-center justify-center ${
+                              done
+                                ? "bg-emerald-500 border-emerald-500 text-slate-950"
+                                : "bg-cyan-500/15 border-cyan-500/30 text-cyan-300"
+                            }`}
+                          >
+                            {done ? <Check className="w-3 h-3" /> : i + 1}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-semibold text-white">{step.title}</p>
+                            <p className="mt-0.5 text-[11px] leading-relaxed text-slate-400">{step.text}</p>
+                            {picked && (
+                              <p className="mt-1 text-[11px] font-semibold text-cyan-300">Selected: {picked.name}</p>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => setDomainView(i)}
+                            className={`shrink-0 self-start flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold transition ${
+                              done
+                                ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25"
+                                : "border-cyan-500/40 bg-cyan-500/10 text-cyan-200 hover:bg-cyan-500/20"
+                            }`}
+                          >
+                            <span
+                              className={`w-3 h-3 rounded-full border ${
+                                done ? "border-emerald-400 bg-emerald-400" : "border-cyan-300/70"
+                              }`}
+                            />
+                            {done ? "Completed" : "Complete step →"}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ol>
+
+                  <section className="px-5 pb-5 pt-4 border-t border-slate-800">
+                    <h3 className="text-xs font-bold text-white">Do it all in one place</h3>
+                    <p className="mt-1 mb-3 text-[11px] leading-relaxed text-slate-400">
+                      These providers cover most of the steps above (domain, hosting, DNS, HTTPS and deploy) in a single
+                      account. A database and the final testing may still need an add-on or another tool.
+                    </p>
+                    <ul className="grid gap-2 sm:grid-cols-2">
+                      {ALL_IN_ONE.map((o, i) =>
+                        optionCard(o, i, selectedOptions["all-in-one"] === o.id, () =>
+                          setSelectedOptions((cur) => ({ ...cur, "all-in-one": o.id }))
+                        )
+                      )}
+                    </ul>
+                  </section>
+                </>
+              ) : (
+                <>
+                  <div className="px-5 pt-4">
+                    <button
+                      onClick={() => setDomainView("steps")}
+                      className="mb-2 flex items-center gap-1 text-[11px] font-semibold text-slate-400 hover:text-white transition"
+                    >
+                      <ChevronLeft className="w-3 h-3" /> Back to steps
+                    </button>
+                    <p className="text-xs font-bold text-white">
+                      Step {domainView + 1}: {activeStep.title}
+                    </p>
+                    <p className="mt-1 text-[11px] text-slate-400">Choose the one you prefer</p>
+                  </div>
+
+                  <ul className="px-5 py-3 grid gap-2 sm:grid-cols-2">
+                    {activeStep.options.map((o, i) =>
+                      optionCard(o, i, selectedOptions[activeStep.title] === o.id, () =>
+                        setSelectedOptions((cur) => ({ ...cur, [activeStep.title]: o.id }))
+                      )
+                    )}
+                  </ul>
+
+                  <div className="px-5 pb-5 flex flex-wrap items-center gap-3">
+                    {doneSteps.includes(activeStep.title) ? (
+                      <button
+                        onClick={() => setStepDone(activeStep.title, false)}
+                        className="px-4 py-2 rounded-lg border border-slate-700 text-[11px] font-bold text-slate-300 hover:bg-slate-800/70 transition"
+                      >
+                        Mark as not done
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setStepDone(activeStep.title, true);
+                          setDomainView("steps");
+                        }}
+                        className="px-4 py-2 rounded-lg bg-emerald-500 text-[11px] font-bold text-slate-950 hover:brightness-110 transition"
+                      >
+                        I&apos;ve completed this step
+                      </button>
+                    )}
+                    <span className="text-[10px] text-slate-500">
+                      Selecting opens the website in a new tab. Come back and tap the green button when you are done.
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <ProfileModal
         key={showProfile ? "open" : "closed"}
