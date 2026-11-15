@@ -53,6 +53,8 @@ import {
   GitBranch,
   Copy,
   Check,
+  Maximize2,
+  Minimize2,
   Plus,
   X,
   Crown,
@@ -275,9 +277,47 @@ export default function EditorClient({
   // Focus layout: typing the idea widens the idea panel (the main area shrinks); looking at the
   // Live Preview narrows the idea panel (the main area grows). Desktop only.
   const [writing, setWriting] = useState(false);
+  // Full-screen Live Preview: the browser's real full screen where it works, a page-covering overlay otherwise.
+  const previewRef = useRef<HTMLDivElement>(null);
+  const [previewFull, setPreviewFull] = useState(false);
+  const enterPreviewFull = () => {
+    setPreviewFull(true);
+    try {
+      void previewRef.current?.requestFullscreen?.().catch(() => {
+        /* not allowed (e.g. iPhone): the overlay below still fills the screen */
+      });
+    } catch {
+      /* same: overlay only */
+    }
+  };
+  const exitPreviewFull = () => {
+    setPreviewFull(false);
+    try {
+      if (document.fullscreenElement) void document.exitFullscreen();
+    } catch {
+      /* ignore */
+    }
+  };
+  useEffect(() => {
+    const onChange = () => {
+      if (!document.fullscreenElement) setPreviewFull(false); // Esc pressed in real full screen
+    };
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+  useEffect(() => {
+    if (!previewFull) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") exitPreviewFull();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [previewFull]);
   const panelMode: "write" | "preview" | "normal" = writing ? "write" : activeTab === "preview" ? "preview" : "normal";
   useEffect(() => {
     if (activeTab === "preview") setWriting(false); // a finished build / tab switch shows the preview
+    else if (previewFull) exitPreviewFull();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
   useEffect(() => {
     // clicks inside the preview iframe do not bubble to the page; the window loses focus to the iframe instead
@@ -1474,22 +1514,33 @@ export default function EditorClient({
               </div>
 
               <div className="flex items-center gap-2">
-                <button
-                  onClick={handleCopyCode}
-                  className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs transition"
-                >
-                  {copied ? (
-                    <>
-                      <Check className="w-3.5 h-3.5 text-emerald-400" />
-                      Copied
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3.5 h-3.5" />
-                      Copy Buffer
-                    </>
-                  )}
-                </button>
+                {activeTab === "preview" ? (
+                  <button
+                    onClick={enterPreviewFull}
+                    title="Show the live preview full screen"
+                    className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs transition"
+                  >
+                    <Maximize2 className="w-3.5 h-3.5" />
+                    Full Screen
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleCopyCode}
+                    className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs transition"
+                  >
+                    {copied ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        Copied
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        Copy Buffer
+                      </>
+                    )}
+                  </button>
+                )}
               </div>
             </div>
 
@@ -1574,13 +1625,26 @@ export default function EditorClient({
                 )}
               </div>
             ) : (
-              <div className="flex-1 bg-[#090D16] relative">
+              <div
+                ref={previewRef}
+                className={`bg-[#090D16] relative ${previewFull ? "fixed inset-0 z-[100]" : "flex-1"}`}
+              >
                 <iframe
                   title="Live App Preview"
                   srcDoc={previewHtml}
                   sandbox="allow-scripts allow-modals"
                   className="w-full h-full border-0"
                 />
+                {previewFull && (
+                  <button
+                    onClick={exitPreviewFull}
+                    title="Exit full screen (Esc)"
+                    className="absolute top-3 right-3 z-10 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900/80 hover:bg-slate-800 backdrop-blur border border-slate-700 text-slate-100 text-xs font-semibold shadow-lg transition"
+                  >
+                    <Minimize2 className="w-3.5 h-3.5" />
+                    Exit Full Screen
+                  </button>
+                )}
               </div>
             )}
           </div>
