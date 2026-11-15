@@ -39,10 +39,10 @@ export const MAX_TOPUP = 500;
  * a plan purchase gives PLAN_DURATION_DAYS of access, and the user pays again to renew.
  */
 export const PLAN_PRICE_PAISE: Record<"STANDARD" | "PRO", number> = {
-  STANDARD: 219900, // Rs 2,199
-  PRO: 879900, // Rs 8,799
+  STANDARD: 235614, // Rs 2,356.14  ($25 at 1 USD = 94.2456 INR)
+  PRO: 933030, // Rs 9,330.30  ($99 at 1 USD = 94.2456 INR)
 };
-export const TOKEN_PRICE_PAISE = 26900; // Rs 269 per extra token
+export const TOKEN_PRICE_PAISE = 28274; // Rs 282.74 per extra token ($3 at 1 USD = 94.2456 INR)
 export const PLAN_DURATION_DAYS = 30;
 
 // ---- Voice ($0.50 per minute, paid with tokens) --------------------------------------
