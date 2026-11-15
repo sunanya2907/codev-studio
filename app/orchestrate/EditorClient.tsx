@@ -272,6 +272,23 @@ export default function EditorClient({
     return () => window.removeEventListener("keydown", onKey);
   }, [domainMenuOpen]);
   const [activeTab, setActiveTab] = useState<"editor" | "preview">("editor");
+  // Focus layout: typing the idea widens the idea panel (the main area shrinks); looking at the
+  // Live Preview narrows the idea panel (the main area grows). Desktop only.
+  const [writing, setWriting] = useState(false);
+  const panelMode: "write" | "preview" | "normal" = writing ? "write" : activeTab === "preview" ? "preview" : "normal";
+  useEffect(() => {
+    if (activeTab === "preview") setWriting(false); // a finished build / tab switch shows the preview
+  }, [activeTab]);
+  useEffect(() => {
+    // clicks inside the preview iframe do not bubble to the page; the window loses focus to the iframe instead
+    const onBlur = () => {
+      setTimeout(() => {
+        if (document.activeElement?.tagName === "IFRAME") setWriting(false);
+      }, 0);
+    };
+    window.addEventListener("blur", onBlur);
+    return () => window.removeEventListener("blur", onBlur);
+  }, []);
   const [activeAgentIndex, setActiveAgentIndex] = useState<number>(0);
   const [flowMode, setFlowMode] = useState<"diagram" | "text">("diagram"); // pseudocode & flowchart view
 
@@ -600,7 +617,7 @@ export default function EditorClient({
     if (!el) return;
     el.style.height = "auto"; // shrink first so deleting text makes the box smaller again
     el.style.height = `${el.scrollHeight}px`;
-  }, [prompt]);
+  }, [prompt, panelMode]);
 
   // Opens GoDaddy's domain search for the typed name (or GoDaddy's domains page if empty).
   const openGoDaddySearch = () => {
@@ -1310,7 +1327,11 @@ export default function EditorClient({
       </aside>
 
       {/* 2. SECOND COLUMN: PROMPT BOX + BUILD BUTTON + AGENT 1-5 STACK */}
-      <section className="w-full lg:w-80 bg-[#0E1424] border-b lg:border-b-0 lg:border-r border-slate-800/80 flex flex-col justify-between p-4 shrink-0 lg:overflow-y-auto">
+      <section
+        className={`w-full ${
+          panelMode === "write" ? "lg:w-[30rem]" : panelMode === "preview" ? "lg:w-64" : "lg:w-80"
+        } lg:transition-[width] lg:duration-300 bg-[#0E1424] border-b lg:border-b-0 lg:border-r border-slate-800/80 flex flex-col justify-between p-4 shrink-0 lg:overflow-y-auto`}
+      >
         <div className="space-y-4">
           <div>
             <h2 className="text-lg font-extrabold tracking-tight text-white">
@@ -1334,17 +1355,20 @@ export default function EditorClient({
               ref={promptRef}
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              rows={4}
+              onFocus={() => setWriting(true)}
+              rows={panelMode === "preview" ? 2 : 4}
               maxLength={1000}
               placeholder="e.g. A task manager with PostgreSQL database, user auth, and analytics..."
-              className="select-text w-full bg-[#0B0F19] border border-slate-800/90 rounded-xl p-3 text-base sm:text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-violet-500 resize-none overflow-y-auto max-h-[60vh]"
+              className={`select-text w-full bg-[#0B0F19] border border-slate-800/90 rounded-xl p-3 text-base sm:text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-violet-500 resize-none overflow-y-auto ${
+                panelMode === "preview" ? "lg:max-h-24" : "max-h-[60vh]"
+              } ${panelMode === "write" ? "lg:min-h-[12rem]" : ""}`}
             />
 
-            <div className="mt-3 flex items-stretch gap-2">
+            <div className={`mt-3 flex items-stretch gap-2 ${panelMode === "preview" ? "lg:flex-wrap" : ""}`}>
               <button
                 onClick={handleBuildApp}
                 disabled={isGenerating || isAsking || !billingReady}
-                className="flex-1 min-w-0 h-10 whitespace-nowrap rounded-lg font-bold text-[11px] uppercase tracking-wide text-white bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-500 hover:brightness-110 active:scale-[0.99] transition shadow-lg shadow-violet-600/30 flex items-center justify-center gap-2 disabled:opacity-50"
+                className={`${panelMode === "preview" ? "lg:basis-full" : ""} flex-1 min-w-0 h-10 whitespace-nowrap rounded-lg font-bold text-[11px] uppercase tracking-wide text-white bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-500 hover:brightness-110 active:scale-[0.99] transition shadow-lg shadow-violet-600/30 flex items-center justify-center gap-2 disabled:opacity-50`}
               >
                 <Sparkles className="w-3.5 h-3.5 shrink-0" />
                 {!billingReady
@@ -1365,7 +1389,7 @@ export default function EditorClient({
                 disabled={!prompt.trim() || isEnhancing || isGenerating || isAsking}
                 title="Enhance prompt with AI (free)"
                 aria-label="Enhance prompt with AI"
-                className="shrink-0 w-9 rounded-lg bg-[#1F1F1F] hover:bg-[#2B2B2B] border border-white/10 text-amber-300 transition active:scale-95 flex items-center justify-center disabled:opacity-40"
+                className="shrink-0 w-9 h-10 rounded-lg bg-[#1F1F1F] hover:bg-[#2B2B2B] border border-white/10 text-amber-300 transition active:scale-95 flex items-center justify-center disabled:opacity-40"
               >
                 <Wand2 className={`w-4 h-4 ${isEnhancing ? "animate-pulse" : ""}`} strokeWidth={1.75} />
               </button>
@@ -1379,7 +1403,7 @@ export default function EditorClient({
                 }}
                 title={`Talk to build · ${VOICE_PRICE_LABEL} (${VOICE_TOKEN_LABEL})`}
                 aria-label={`Talk to build · ${VOICE_PRICE_LABEL} (${VOICE_TOKEN_LABEL})`}
-                className="shrink-0 w-9 rounded-lg bg-[#1F1F1F] hover:bg-[#2B2B2B] border border-white/10 text-white transition active:scale-95 flex items-center justify-center"
+                className="shrink-0 w-9 h-10 rounded-lg bg-[#1F1F1F] hover:bg-[#2B2B2B] border border-white/10 text-white transition active:scale-95 flex items-center justify-center"
               >
                 <Mic className="w-4 h-4" strokeWidth={1.75} />
               </button>
@@ -1389,11 +1413,14 @@ export default function EditorClient({
       </section>
 
       {/* 3. RIGHT MAIN WORKSPACE: TOP TABS + SINGLE AGENT STAGE / UNLOCK + BOTTOM BAR */}
-      <main className="w-full min-w-0 min-h-[100dvh] lg:min-h-0 lg:flex-1 flex flex-col justify-between bg-[#0B0F19] lg:overflow-hidden">
+      <main onPointerDown={() => setWriting(false)} className="w-full min-w-0 min-h-[100dvh] lg:min-h-0 lg:flex-1 flex flex-col justify-between bg-[#0B0F19] lg:overflow-hidden">
         <header className="min-h-16 px-3 sm:px-6 py-2 gap-2 flex-wrap border-b border-slate-800/80 flex items-center justify-between bg-[#0E1424]/60 backdrop-blur">
           <div className="flex items-center gap-2 bg-[#090D16] p-1 rounded-xl border border-slate-800">
             <button
-              onClick={() => setActiveTab("editor")}
+              onClick={() => {
+                setWriting(false);
+                setActiveTab("editor");
+              }}
               className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition ${
                 activeTab === "editor"
                   ? "bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow"
@@ -1405,7 +1432,10 @@ export default function EditorClient({
             </button>
 
             <button
-              onClick={() => setActiveTab("preview")}
+              onClick={() => {
+                setWriting(false);
+                setActiveTab("preview");
+              }}
               className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition ${
                 activeTab === "preview"
                   ? "bg-gradient-to-r from-blue-600 to-cyan-500 text-white shadow"
