@@ -1599,15 +1599,6 @@ export default function EditorClient({
             />
 
             <button
-              onClick={openVoiceEdit}
-              title={`Talk to edit · ${VOICE_PRICE_LABEL} (${VOICE_TOKEN_LABEL})`}
-              aria-label="Talk to edit"
-              className="p-2 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 transition shrink-0"
-            >
-              <Mic className="w-3.5 h-3.5" />
-            </button>
-
-            <button
               onClick={handleCustomizeAgent}
               disabled={isGenerating}
               className="px-5 py-2.5 rounded-xl font-bold text-xs text-white bg-gradient-to-r from-violet-600 to-cyan-500 hover:brightness-110 transition shadow-lg shadow-violet-600/20 flex items-center gap-2 shrink-0"
@@ -1619,6 +1610,15 @@ export default function EditorClient({
                   ({CUSTOMIZE_COST} Token)
                 </span>
               )}
+            </button>
+
+            <button
+              onClick={openVoiceEdit}
+              title={`Talk to edit · ${VOICE_PRICE_LABEL} (${VOICE_TOKEN_LABEL})`}
+              aria-label="Talk to edit"
+              className="p-2 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 transition shrink-0"
+            >
+              <Mic className="w-3.5 h-3.5" />
             </button>
           </div>
         </footer>
