@@ -6,7 +6,7 @@ import { Check, Coins, Crown, Plus, X } from "lucide-react";
 import { startCheckout, contactForExclusive } from "@/lib/billing-client";
 import PaymentMethodToggle from "@/components/PaymentMethodToggle";
 import { PLAN_DETAILS } from "@/lib/plan-details";
-import { TOKEN_PRICE_LABEL } from "@/lib/plans";
+import { TOKEN_PRICE_CENTS, TOKEN_PRICE_LABEL, usd } from "@/lib/plans";
 import type { PaymentProvider } from "@/lib/plans";
 
 
@@ -173,7 +173,7 @@ export default function PricingPage() {
               className="px-5 py-2.5 rounded-xl font-extrabold text-xs uppercase tracking-wider text-slate-950 bg-gradient-to-r from-amber-400 to-yellow-300 hover:brightness-110 flex items-center gap-1.5 shadow-lg shadow-amber-500/20 transition cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              {loadingPlan === "TOPUP" ? "Adding..." : `Buy for $${extraTokensCount * 1}`}
+              {loadingPlan === "TOPUP" ? "Adding..." : `Buy for ${usd(extraTokensCount * TOKEN_PRICE_CENTS)}`}
             </button>
           </div>
         </div>

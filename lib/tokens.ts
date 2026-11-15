@@ -17,7 +17,7 @@ export type BillingState = { tier: Tier; tokenBalance: number };
  * returns their up-to-date plan + balance. Call it before reading or spending tokens.
  *
  * Refill rule: the balance is topped UP to the plan allowance, never down. Tokens
- * the user bought as $1 top-ups (anything above the allowance) are therefore kept,
+ * the user bought as extra-token top-ups (anything above the allowance) are therefore kept,
  * while unused plan tokens do not pile up from month to month.
  *
  * Race-safe: the period start is "claimed" with a conditional update, so two

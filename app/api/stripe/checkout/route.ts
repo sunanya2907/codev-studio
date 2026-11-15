@@ -114,7 +114,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ url: url(checkout.url) });
     }
 
-    // ---- One-off $1 token top-up ------------------------------------------------------
+    // ---- One-off token top-up ------------------------------------------------------
     if (body.action === "TOKENS") {
       const count = Math.floor(Number(body.tokens));
       if (!Number.isFinite(count) || count < 1 || count > MAX_TOPUP) {

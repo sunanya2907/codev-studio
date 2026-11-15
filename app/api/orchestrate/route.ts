@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { reportError } from "@/lib/debug-agent";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
-import { BUILD_COST, CUSTOMIZE_COST, STANDARD_PRICE_LABEL } from "@/lib/plans";
+import { BUILD_COST, CUSTOMIZE_COST, STANDARD_PRICE_LABEL, TOKEN_PRICE_LABEL } from "@/lib/plans";
 import { getBillingState, reserveTokens, refundTokens } from "@/lib/tokens";
 import { normalizeFiles } from "@/lib/files";
 import { failBuild, reconcileStaleBuilds } from "@/lib/builds";
@@ -78,7 +78,7 @@ export async function POST(req: Request) {
     const outOfTokens = (cost: number) =>
       NextResponse.json(
         {
-          error: `You have used all your plan tokens! This action costs ${cost} token${cost === 1 ? "" : "s"}. Buy extra tokens for $1 each or upgrade your plan.`,
+          error: `You have used all your plan tokens! This action costs ${cost} token${cost === 1 ? "" : "s"}. Buy extra tokens for ${TOKEN_PRICE_LABEL} each or upgrade your plan.`,
           code: "OUT_OF_TOKENS",
         },
         { status: 402 }

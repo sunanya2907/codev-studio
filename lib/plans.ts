@@ -26,12 +26,12 @@ export const CUSTOMIZE_COST = 1;
 
 /** Monthly subscription prices in US cents (charged through Stripe Checkout). */
 export const PLAN_PRICE_CENTS: Record<"STANDARD" | "PRO", number> = {
-  STANDARD: 900,
-  PRO: 4900,
+  STANDARD: 2500, // $25 for 10 tokens ($2.50 each)
+  PRO: 9900, // $99 for 50 tokens (about $1.98 each)
 };
 
 /** One extra token. */
-export const TOKEN_PRICE_CENTS = 100;
+export const TOKEN_PRICE_CENTS = 300; // $3 per extra token
 export const MAX_TOPUP = 500;
 
 /**
@@ -39,16 +39,16 @@ export const MAX_TOPUP = 500;
  * a plan purchase gives PLAN_DURATION_DAYS of access, and the user pays again to renew.
  */
 export const PLAN_PRICE_PAISE: Record<"STANDARD" | "PRO", number> = {
-  STANDARD: 79900, // Rs 799
-  PRO: 399900, // Rs 3,999
+  STANDARD: 219900, // Rs 2,199
+  PRO: 879900, // Rs 8,799
 };
-export const TOKEN_PRICE_PAISE = 9900; // Rs 99 per extra token
+export const TOKEN_PRICE_PAISE = 26900; // Rs 269 per extra token
 export const PLAN_DURATION_DAYS = 30;
 
 // ---- Voice ($0.50 per minute, paid with tokens) --------------------------------------
 /** Voice price in US cents per minute. */
 export const VOICE_PRICE_CENTS_PER_MIN = 50;
-/** One token ($1) buys this many seconds of voice (120 s = 2 minutes at $0.50/min). */
+/** One token ($3) buys this many seconds of voice (360 s = 6 minutes at $0.50/min). */
 export const VOICE_SECONDS_PER_TOKEN = Math.round(
   (TOKEN_PRICE_CENTS / VOICE_PRICE_CENTS_PER_MIN) * 60
 );

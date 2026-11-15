@@ -19,6 +19,9 @@ import {
   FREE_TRIAL_BUILDS,
   VOICE_PRICE_LABEL,
   VOICE_TOKEN_LABEL,
+  TOKEN_PRICE_CENTS,
+  TOKEN_PRICE_LABEL,
+  usd,
 } from "@/lib/plans";
 import { startCheckout, contactForExclusive } from "@/lib/billing-client";
 import PaymentMethodToggle from "@/components/PaymentMethodToggle";
@@ -544,7 +547,7 @@ export default function EditorClient({
     }
   };
 
-  // Upgrade Plan Handler (Standard $9 / Pro $49 via Stripe; Exclusive = contact us)
+  // Upgrade Plan Handler (prices come from lib/plans.ts, via Stripe; Exclusive = contact us)
   const handleSelectPlan = async (selectedPlan: string) => {
     if (selectedPlan === "FREE") {
       setShowPricingModal(false);
@@ -571,7 +574,7 @@ export default function EditorClient({
     setBillingLoading(null);
   };
 
-  // Buy Extra Tokens ($1 per token, paid through Stripe Checkout)
+  // Buy Extra Tokens (price per token from lib/plans.ts, paid through Stripe Checkout)
   const handleBuyExtraTokens = async (countToBuy: number) => {
     setBillingLoading("TOPUP");
     const result = await startCheckout({ action: "TOKENS", tokens: countToBuy }, provider);
@@ -1352,7 +1355,7 @@ export default function EditorClient({
                   ? "Orchestrating Agents..."
                   : tokenBalance > 0
                   ? "Build App (1 Token)"
-                  : "Top Up Tokens ($1)"}
+                  : `Top Up Tokens (${TOKEN_PRICE_LABEL})`}
               </button>
 
               {/* Enhance prompt: the AI rewrites the idea into a fuller one (free) */}
@@ -1425,7 +1428,7 @@ export default function EditorClient({
           </div>
         </header>
 
-        {/* CENTER STAGE: Active Agent Header + Code/Preview or UNLOCK FOR ($9) Overlay */}
+        {/* CENTER STAGE: Active Agent Header + Code/Preview or UNLOCK FOR (Standard price) Overlay */}
         <div className="flex-1 min-h-[70vh] lg:min-h-0 p-3 sm:p-6 overflow-hidden flex flex-col">
           <div className="flex-1 rounded-2xl bg-[#111827] border border-slate-800/90 shadow-2xl flex flex-col overflow-hidden relative">
             <div className="px-3 sm:px-5 py-3.5 gap-2 flex-wrap bg-[#0D1322] border-b border-slate-800 flex items-center justify-between">
@@ -1505,7 +1508,7 @@ export default function EditorClient({
                 />
                 )}
 
-                {/* UNLOCK FOR ($9) OVERLAY ON AGENTS 2, 3, 4, 5 FOR FREE PLAN */}
+                {/* UNLOCK FOR (STANDARD PRICE) OVERLAY ON AGENTS 2, 3, 4, 5 FOR FREE PLAN */}
                 {isCurrentAgentLocked && (
                   <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center z-10">
                     <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-slate-950 shadow-xl shadow-amber-500/20 mb-4">
@@ -1655,7 +1658,7 @@ export default function EditorClient({
         }}
       />
 
-      {/* 4. FULL INTERACTIVE PRICING & $1 EXTRA TOKEN MODAL */}
+      {/* 4. FULL INTERACTIVE PRICING & EXTRA TOKEN MODAL */}
 
       {showPricingModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
@@ -1666,7 +1669,7 @@ export default function EditorClient({
                   <Crown className="w-3.5 h-3.5" /> Build_Core Plans & Token Billing
                 </span>
                 <h3 className="text-2xl font-extrabold text-white mt-1">
-                  Unlock All 5 AI Agents or Top Up Extra Tokens ($1)
+                  Unlock All 5 AI Agents or Top Up Extra Tokens ({TOKEN_PRICE_LABEL})
                 </h3>
               </div>
               {tier !== "FREE" && (
@@ -1763,15 +1766,15 @@ export default function EditorClient({
               })}
             </div>
 
-            {/* Extra Token ($1 Each) Instant Top-Up Bar */}
+            {/* Extra Token Instant Top-Up Bar */}
             <div className="rounded-2xl bg-[#090D16] border border-amber-500/40 p-5 flex flex-col md:flex-row items-center justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2 text-amber-400 font-bold text-sm">
                   <Coins className="w-4 h-4" />
-                  <span>Need More Tokens This Month? Buy Extra Tokens for $1 Each</span>
+                  <span>Need More Tokens This Month? Buy Extra Tokens for {TOKEN_PRICE_LABEL} Each</span>
                 </div>
                 <p className="text-xs text-slate-400 mt-1">
-                  Finished your monthly plan tokens early? Top up extra tokens instantly at <strong>$1 per token</strong> without changing your subscription.
+                  Finished your monthly plan tokens early? Top up extra tokens instantly at <strong>{TOKEN_PRICE_LABEL} per token</strong> without changing your subscription.
                 </p>
               </div>
 
@@ -1798,7 +1801,7 @@ export default function EditorClient({
                   <Plus className="w-4 h-4" />
                   {billingLoading === "TOPUP"
                     ? "Adding..."
-                    : `Buy for $${extraTokensCount * 1}`}
+                    : `Buy for ${usd(extraTokensCount * TOKEN_PRICE_CENTS)}`}
                 </button>
               </div>
             </div>
