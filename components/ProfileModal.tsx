@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
-import { X, Check } from "lucide-react";
+import Link from "next/link";
+import { X, Check, FileText } from "lucide-react";
 
 export type Profile = { name: string; email: string; image: string | null };
 
@@ -128,6 +129,15 @@ export default function ProfileModal({ open, profile, onClose, onSaved }: Props)
             "Save changes"
           )}
         </button>
+
+        <Link
+          href="/terms"
+          target="_blank"
+          className="mt-3 w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-900/60 border border-slate-800 transition"
+        >
+          <FileText className="w-4 h-4 text-slate-400" />
+          Terms &amp; Conditions
+        </Link>
       </div>
     </div>
   );

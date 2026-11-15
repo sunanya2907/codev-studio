@@ -25,7 +25,6 @@ import PaymentMethodToggle from "@/components/PaymentMethodToggle";
 import { PLAN_DETAILS } from "@/lib/plan-details";
 import BuildProgress, { IDLE_STATUSES, type AgentStatuses } from "@/components/BuildProgress";
 import VoiceBuilder, { type ApplyResult } from "@/components/VoiceBuilder";
-import DomainSearch from "@/components/DomainSearch";
 import FlowView from "@/components/FlowView";
 import BuildQuestions, { type BuildQuestion } from "@/components/BuildQuestions";
 import type { PaymentProvider } from "@/lib/plans";
@@ -51,16 +50,21 @@ import {
   GitBranch,
   Copy,
   Check,
-  Zap,
   Plus,
   X,
   Crown,
-  FileText,
   Globe,
   Wand2,
   LogOut,
   MessageSquarePlus,
+  Search,
 } from "lucide-react";
+
+// GoDaddy links for the sidebar "Domain & Hosting" plugin.
+const GODADDY_DOMAINS_URL = "https://www.godaddy.com/domains";
+const GODADDY_SEARCH_URL = "https://www.godaddy.com/domainsearch/find";
+const GODADDY_PRICING_URL = "https://www.godaddy.com/websites/website-builder/plans-and-pricing";
+const GODADDY_HOSTING_URL = "https://www.godaddy.com/hosting/web-hosting";
 
 interface HistoryItem {
   id: string;
@@ -180,7 +184,7 @@ export default function EditorClient({
   }, []);
   const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
   const [showPricingModal, setShowPricingModal] = useState(false);
-  const [showDomainModal, setShowDomainModal] = useState(false);
+  const [domainQuery, setDomainQuery] = useState("");
   const [activeTab, setActiveTab] = useState<"editor" | "preview">("editor");
   const [activeAgentIndex, setActiveAgentIndex] = useState<number>(0);
   const [flowMode, setFlowMode] = useState<"diagram" | "text">("diagram"); // pseudocode & flowchart view
@@ -504,6 +508,15 @@ export default function EditorClient({
     const result = await startCheckout({ action: "PORTAL" });
     if (result.kind === "error") alert(result.error);
     setBillingLoading(null);
+  };
+
+  // Opens GoDaddy's domain search for the typed name (or GoDaddy's domains page if empty).
+  const openGoDaddySearch = () => {
+    const q = domainQuery.trim();
+    const url = q
+      ? `${GODADDY_SEARCH_URL}?domainToCheck=${encodeURIComponent(q)}`
+      : GODADDY_DOMAINS_URL;
+    window.open(url, "_blank", "noopener,noreferrer");
   };
 
   // Full App Build Handler (Enforces Token Deduction & Free Plan Visibility)
@@ -873,18 +886,6 @@ export default function EditorClient({
             </button>
 
             <button
-              onClick={() => setShowHistoryDrawer(false)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition ${
-                !showHistoryDrawer
-                  ? "bg-gradient-to-r from-violet-600/30 to-indigo-600/20 text-white border border-violet-500/40 shadow-lg shadow-violet-600/10"
-                  : "text-slate-400 hover:text-white hover:bg-slate-900/60"
-              }`}
-            >
-              <Zap className="w-4 h-4 text-violet-400 shrink-0" />
-              {sidebarOpen && <span>FUSE Orchestrator</span>}
-            </button>
-
-            <button
               onClick={() => setShowHistoryDrawer(!showHistoryDrawer)}
               className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition ${
                 showHistoryDrawer
@@ -902,31 +903,6 @@ export default function EditorClient({
                 </span>
               )}
             </button>
-
-            <button
-              onClick={() => setShowPricingModal(true)}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold text-amber-300 hover:text-white hover:bg-amber-500/10 border border-transparent hover:border-amber-500/30 transition"
-            >
-              <Coins className="w-4 h-4 text-amber-400 shrink-0" />
-              {sidebarOpen && <span>Plans & $1 Tokens</span>}
-            </button>
-
-            <button
-              onClick={() => setShowDomainModal(true)}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold text-cyan-300 hover:text-white hover:bg-cyan-500/10 border border-transparent hover:border-cyan-500/30 transition"
-            >
-              <Globe className="w-4 h-4 text-cyan-300 shrink-0" />
-              {sidebarOpen && <span>Find a Domain</span>}
-            </button>
-
-            <Link
-              href="/terms"
-              target="_blank"
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-900/60 transition"
-            >
-              <FileText className="w-4 h-4 text-slate-400 shrink-0" />
-              {sidebarOpen && <span>Terms & Conditions</span>}
-            </Link>
           </nav>
 
           {/* MULTI-AGENT PIPELINE (hides/shrinks with the sidebar) */}
@@ -1007,59 +983,76 @@ export default function EditorClient({
           </div>
         </div>
 
-        {/* Bottom Active Plan & Token Balance Card */}
-        <div className="p-3 shrink-0">
+        {/* Bottom: Domain & Hosting plugin (GoDaddy) + profile logo */}
+        <div className="p-3 shrink-0 space-y-3">
           {sidebarOpen ? (
-            <div className="rounded-2xl bg-gradient-to-b from-slate-900/95 to-[#0B0F19] border border-slate-800 p-4 shadow-xl">
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                  {tier === "FREE" ? "Free Plan" : `${tier} Plan`}
-                </span>
-                <span
-                  className={`text-[11px] font-bold ${
-                    tokenBalance === 0 ? "text-rose-400" : "text-amber-400"
-                  }`}
-                >
-                  {tokenBalance} / {maxTokensForPlan} left
-                </span>
+            <div className="rounded-2xl bg-slate-900/70 border border-slate-800 p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <Globe className="w-4 h-4 text-cyan-300 shrink-0" />
+                <span className="text-xs font-bold text-white">Domain &amp; Hosting</span>
               </div>
-
-              <p className="text-[11px] text-slate-400 mb-2.5">
-                {tier === "FREE"
-                  ? `${FREE_TRIAL_BUILDS} free trial builds • Live Preview only`
-                  : "All 5 AI Agents Unlocked"}
-              </p>
-
-              <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden mb-3.5">
-                <div
-                  className={`h-full transition-all duration-500 ${
-                    tokenBalance === 0
-                      ? "bg-rose-500"
-                      : "bg-gradient-to-r from-violet-500 via-indigo-500 to-cyan-400"
-                  }`}
-                  style={{ width: `${usagePercent}%` }}
+              <div className="flex gap-1.5 mb-2">
+                <input
+                  value={domainQuery}
+                  onChange={(e) => setDomainQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && openGoDaddySearch()}
+                  placeholder="yourbrand.com"
+                  aria-label="Domain name to search on GoDaddy"
+                  className="min-w-0 flex-1 bg-[#0B0F19] border border-slate-800 rounded-lg px-2 py-1.5 text-base sm:text-[11px] text-white placeholder:text-slate-600 focus:outline-none focus:border-cyan-500/50 select-text"
                 />
+                <button
+                  onClick={openGoDaddySearch}
+                  className="px-2 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 text-cyan-300 transition"
+                  title="Search this domain on GoDaddy"
+                  aria-label="Search this domain on GoDaddy"
+                >
+                  <Search className="w-3.5 h-3.5" />
+                </button>
               </div>
-
-              <button
-                onClick={() => setShowPricingModal(true)}
-                className="w-full py-2 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-500 hover:brightness-110 shadow-lg shadow-violet-600/25 transition"
-              >
-                {tier === "FREE"
-                  ? `Upgrade Plan (${STANDARD_PRICE_LABEL})`
-                  : "+ Buy $1 Extra Token"}
-              </button>
+              <div className="grid grid-cols-2 gap-1.5">
+                <a
+                  href={GODADDY_PRICING_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-1 py-1.5 rounded-lg bg-slate-800/70 hover:bg-slate-800 text-[11px] font-semibold text-slate-200 transition"
+                >
+                  <Coins className="w-3 h-3 text-amber-400" /> Pricing
+                </a>
+                <a
+                  href={GODADDY_HOSTING_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-1 py-1.5 rounded-lg bg-slate-800/70 hover:bg-slate-800 text-[11px] font-semibold text-slate-200 transition"
+                >
+                  <Server className="w-3 h-3 text-emerald-400" /> Hosting
+                </a>
+              </div>
+              <p className="mt-2 text-[10px] text-slate-500">Opens GoDaddy in a new tab.</p>
             </div>
           ) : (
-            <button
-              onClick={() => setShowPricingModal(true)}
-              className="w-full py-3 rounded-xl bg-violet-600/20 border border-violet-500/40 flex items-center justify-center text-amber-400"
-              title={`${tokenBalance} Tokens left - Click to Upgrade`}
+            <a
+              href={GODADDY_DOMAINS_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full py-3 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-300 hover:bg-cyan-500/20 transition"
+              title="Find a domain and hosting on GoDaddy"
+              aria-label="Find a domain and hosting on GoDaddy"
             >
-              <Coins className="w-4 h-4" />
-            </button>
+              <Globe className="w-4 h-4" />
+            </a>
           )}
+
+          {/* Profile: logo only. Click opens the profile settings. */}
+          <div className={`flex ${sidebarOpen ? "justify-start" : "justify-center"}`}>
+            <button
+              onClick={() => setShowProfile(true)}
+              title="Profile settings"
+              aria-label="Profile settings"
+              className="rounded-full ring-2 ring-slate-800 hover:ring-violet-500/60 transition"
+            >
+              <Avatar name={profile.name} image={profile.image} size={40} />
+            </button>
+          </div>
         </div>
       </aside>
 
@@ -1240,17 +1233,6 @@ export default function EditorClient({
             >
               <LogOut className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Sign out</span>
-            </button>
-
-            <button
-              onClick={() => setShowProfile(true)}
-              title="Edit your profile"
-              className="flex items-center gap-2 pl-2 sm:border-l border-slate-800 text-xs text-slate-300 hover:text-white transition"
-            >
-              <Avatar name={profile.name} image={profile.image} size={28} />
-              <span className="hidden sm:inline font-medium truncate max-w-[120px]">
-                {profile.name}
-              </span>
             </button>
           </div>
         </header>
@@ -1486,7 +1468,6 @@ export default function EditorClient({
       />
 
       {/* 4. FULL INTERACTIVE PRICING & $1 EXTRA TOKEN MODAL */}
-      {showDomainModal && <DomainSearch onClose={() => setShowDomainModal(false)} />}
 
       {showPricingModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
