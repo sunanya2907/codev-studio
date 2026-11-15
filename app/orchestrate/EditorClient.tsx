@@ -185,7 +185,26 @@ export default function EditorClient({
   useEffect(() => {
     if (window.matchMedia("(max-width: 1023px)").matches) setSidebarOpen(false);
   }, []);
-  const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
+  // History list in the sidebar: open/close, remembered across refreshes (like a saved setting)
+  const HISTORY_OPEN_KEY = "buildcore:historyOpen";
+  const [historyOpen, setHistoryOpenState] = useState(true);
+  const [historyPrefLoaded, setHistoryPrefLoaded] = useState(false); // avoids a flash of the wrong state on refresh
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem(HISTORY_OPEN_KEY) === "0") setHistoryOpenState(false);
+    } catch {
+      /* storage blocked: keep the default (open) */
+    }
+    setHistoryPrefLoaded(true);
+  }, []);
+  const setHistoryOpen = (open: boolean) => {
+    setHistoryOpenState(open);
+    try {
+      window.localStorage.setItem(HISTORY_OPEN_KEY, open ? "1" : "0");
+    } catch {
+      /* storage blocked: still works for this visit */
+    }
+  };
   const [showPricingModal, setShowPricingModal] = useState(false);
   const [domainQuery, setDomainQuery] = useState("");
   const [pipelineOpen, setPipelineOpen] = useState(true); // open/close the agent list in the sidebar
@@ -378,7 +397,6 @@ export default function EditorClient({
     setActiveAgentIndex(0);
     setActiveTab("editor");
     setBuildQuestions(null);
-    setShowHistoryDrawer(false);
     if (typeof window !== "undefined" && window.matchMedia("(max-width: 1023px)").matches) {
       setSidebarOpen(false);
     }
@@ -937,24 +955,80 @@ export default function EditorClient({
               {sidebarOpen && <span>New Chat</span>}
             </button>
 
-            <button
-              onClick={() => setShowHistoryDrawer(!showHistoryDrawer)}
-              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition ${
-                showHistoryDrawer
-                  ? "bg-gradient-to-r from-violet-600/30 to-indigo-600/20 text-white border border-violet-500/40"
-                  : "text-slate-400 hover:text-white hover:bg-slate-900/60"
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <History className="w-4 h-4 text-cyan-400 shrink-0" />
-                {sidebarOpen && <span>History</span>}
-              </div>
-              {sidebarOpen && (
+            {sidebarOpen ? (
+              <button
+                onClick={() => setHistoryOpen(!historyOpen)}
+                aria-expanded={historyOpen}
+                title={historyOpen ? "Hide history" : "Show history"}
+                className="group w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-900/60 transition"
+              >
+                <span className="flex items-center gap-3">
+                  <History className="w-4 h-4 text-cyan-400 shrink-0" />
+                  <span className="flex items-center gap-1">
+                    History
+                    <ChevronDown
+                      className={`w-3 h-3 transition-transform ${historyOpen ? "" : "-rotate-90"}`}
+                    />
+                  </span>
+                </span>
                 <span className="px-2 py-0.5 text-[10px] rounded-full bg-slate-800 text-cyan-300">
                   {historyList.length}
                 </span>
-              )}
-            </button>
+              </button>
+            ) : (
+              <button
+                onClick={() => {
+                  setSidebarOpen(true);
+                  setHistoryOpen(true);
+                }}
+                title="History"
+                aria-label="Open history"
+                className="w-full flex items-center justify-center px-3 py-2.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-900/60 transition"
+              >
+                <History className="w-4 h-4 text-cyan-400 shrink-0" />
+              </button>
+            )}
+
+            {sidebarOpen && historyPrefLoaded && historyOpen && (
+              <div className="max-h-56 overflow-y-auto space-y-1.5 pr-0.5">
+                {historyList.length === 0 ? (
+                  <p className="text-[11px] text-slate-500 text-center py-4 px-2">
+                    No builds yet. Click &quot;Build App&quot; to create your first project!
+                  </p>
+                ) : (
+                  historyList.map((item) => (
+                    <div
+                      key={item.id}
+                      onClick={() => {
+                        if (item.status === "BUILDING") return;
+                        if (item.status === "FAILED") {
+                          alert(item.error || "This build failed. Your token was returned.");
+                          return;
+                        }
+                        openHistoryItem(item);
+                        if (window.matchMedia("(max-width: 1023px)").matches) setSidebarOpen(false);
+                      }}
+                      className={`p-2.5 rounded-lg border cursor-pointer transition ${
+                        currentHistoryId === item.id
+                          ? "bg-violet-600/20 border-violet-500/50"
+                          : "bg-slate-900/80 hover:bg-slate-800 border-slate-800 hover:border-violet-500/50"
+                      }`}
+                    >
+                      <p className="text-[11px] font-semibold text-slate-200 line-clamp-2">{item.prompt}</p>
+                      <span className="text-[10px] text-slate-500 mt-1 flex items-center gap-2">
+                        {new Date(item.createdAt).toLocaleDateString()}
+                        {item.status === "BUILDING" && (
+                          <span className="px-1.5 py-0.5 rounded-full bg-violet-500/20 text-violet-300 font-bold animate-pulse">Building…</span>
+                        )}
+                        {item.status === "FAILED" && (
+                          <span className="px-1.5 py-0.5 rounded-full bg-rose-500/20 text-rose-300 font-bold">Failed · token returned</span>
+                        )}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
           </nav>
 
           {/* MULTI-AGENT PIPELINE (hides/shrinks with the sidebar) */}
@@ -1212,59 +1286,6 @@ export default function EditorClient({
           )}
         </div>
       </aside>
-
-      {/* SLIDE-OUT HISTORY DRAWER */}
-      {showHistoryDrawer && (
-        <div className="w-full lg:w-72 max-h-[60vh] lg:max-h-none bg-[#0D1322] border-b lg:border-b-0 lg:border-r border-slate-800 p-4 flex flex-col z-20 overflow-y-auto shrink-0">
-          <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-800">
-            <h3 className="text-sm font-bold flex items-center gap-2 text-cyan-300">
-              <History className="w-4 h-4" /> Saved Generations
-            </h3>
-            <button
-              onClick={() => setShowHistoryDrawer(false)}
-              className="text-xs text-slate-400 hover:text-white"
-            >
-              Close
-            </button>
-          </div>
-          {historyList.length === 0 ? (
-            <p className="text-xs text-slate-500 text-center py-8">
-              No builds archived yet. Click &quot;Build App&quot; to create your first project!
-            </p>
-          ) : (
-            <div className="space-y-2.5">
-              {historyList.map((item) => (
-                <div
-                  key={item.id}
-                  onClick={() => {
-                    if (item.status === "BUILDING") return;
-                    if (item.status === "FAILED") {
-                      alert(item.error || "This build failed. Your token was returned.");
-                      return;
-                    }
-                    openHistoryItem(item);
-                    setShowHistoryDrawer(false);
-                  }}
-                  className="p-3 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-800 hover:border-violet-500/50 cursor-pointer transition"
-                >
-                  <p className="text-xs font-semibold text-slate-200 line-clamp-2">
-                    {item.prompt}
-                  </p>
-                  <span className="text-[10px] text-slate-500 mt-1 flex items-center gap-2">
-                    {new Date(item.createdAt).toLocaleDateString()}
-                    {item.status === "BUILDING" && (
-                      <span className="px-1.5 py-0.5 rounded-full bg-violet-500/20 text-violet-300 font-bold animate-pulse">Building…</span>
-                    )}
-                    {item.status === "FAILED" && (
-                      <span className="px-1.5 py-0.5 rounded-full bg-rose-500/20 text-rose-300 font-bold">Failed · token returned</span>
-                    )}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
 
       {/* 2. SECOND COLUMN: PROMPT BOX + BUILD BUTTON + AGENT 1-5 STACK */}
       <section className="w-full lg:w-80 bg-[#0E1424] border-b lg:border-b-0 lg:border-r border-slate-800/80 flex flex-col justify-between p-4 shrink-0 lg:overflow-y-auto">
