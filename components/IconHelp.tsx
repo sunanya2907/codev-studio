@@ -1,8 +1,9 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 
-// Click any icon and a small card explains what it is for. Mounted once in the root layout,
-// so every icon in the app is covered without editing each button.
+// Hover over any icon (mouse) and a small card explains what it is for; it disappears when the
+// mouse leaves the icon or you click. On touch screens (no hover) a tap shows it for a few seconds.
+// Mounted once in the root layout, so every icon in the app is covered without editing each button.
 //
 // Where the text comes from (first match wins):
 //   1. data-help="..." on the icon or on a parent (use this to give one icon a custom text)
@@ -77,16 +78,17 @@ export default function IconHelp() {
   const counter = useRef(0);
 
   useEffect(() => {
+    // Mouse users get hover; touch screens have no hover, so they keep tap-to-show.
+    const canHover = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+    let current: Element | null = null; // the icon the card is currently about
+
     const hide = () => {
       clearTimeout(timer.current);
+      current = null;
       setCard(null);
     };
 
-    const onClick = (e: MouseEvent) => {
-      const target = e.target as Element | null;
-      const svg = target?.closest?.("svg");
-      if (!svg || svg.closest("[data-icon-help-card]")) return hide();
-
+    const show = (svg: Element, toggle: boolean) => {
       const help = lookup(svg) ?? (svg.closest("button, a") ? GOOGLE : null);
       if (!help) return hide();
 
@@ -102,18 +104,53 @@ export default function IconHelp() {
 
       clearTimeout(timer.current);
       const id = ++counter.current;
-      setCard((cur) => (cur && cur.help.title === help.title && Math.abs(cur.left - left) < 2 && Math.abs(cur.top - top) < 2 ? null : { id, left, top, help, hint: hint === help.title ? "" : hint }));
-      timer.current = setTimeout(hide, 6000);
+      current = svg;
+      setCard((cur) =>
+        toggle && cur && cur.help.title === help.title && Math.abs(cur.left - left) < 2 && Math.abs(cur.top - top) < 2
+          ? null
+          : { id, left, top, help, hint: hint === help.title ? "" : hint }
+      );
+      if (!canHover) timer.current = setTimeout(hide, 6000);
+    };
+
+    // Mouse: show while the pointer is on an icon, hide as soon as it is not.
+    const onOver = (e: MouseEvent) => {
+      const svg = (e.target as Element | null)?.closest?.("svg");
+      if (!svg || svg.closest("[data-icon-help-card]")) {
+        if (current) hide();
+        return;
+      }
+      if (svg === current) return; // moving between the parts of the same icon
+      show(svg, false);
+    };
+    const onOut = (e: MouseEvent) => {
+      if (!e.relatedTarget) hide(); // the pointer left the page
+    };
+
+    // Touch: tap an icon to show the card, tap anywhere else to hide it.
+    const onTap = (e: MouseEvent) => {
+      const svg = (e.target as Element | null)?.closest?.("svg");
+      if (!svg || svg.closest("[data-icon-help-card]")) return hide();
+      show(svg, true);
     };
 
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && hide();
 
-    document.addEventListener("click", onClick, true);
+    if (canHover) {
+      document.addEventListener("mouseover", onOver, true);
+      document.addEventListener("mouseout", onOut, true);
+      document.addEventListener("click", hide, true); // clicking an icon opens its menu: the card gets out of the way
+    } else {
+      document.addEventListener("click", onTap, true);
+    }
     document.addEventListener("keydown", onKey);
     window.addEventListener("scroll", hide, true);
     window.addEventListener("resize", hide);
     return () => {
-      document.removeEventListener("click", onClick, true);
+      document.removeEventListener("mouseover", onOver, true);
+      document.removeEventListener("mouseout", onOut, true);
+      document.removeEventListener("click", hide, true);
+      document.removeEventListener("click", onTap, true);
       document.removeEventListener("keydown", onKey);
       window.removeEventListener("scroll", hide, true);
       window.removeEventListener("resize", hide);
