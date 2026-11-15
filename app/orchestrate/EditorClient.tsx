@@ -207,7 +207,26 @@ export default function EditorClient({
   };
   const [showPricingModal, setShowPricingModal] = useState(false);
   const [domainQuery, setDomainQuery] = useState("");
-  const [pipelineOpen, setPipelineOpen] = useState(true); // open/close the agent list in the sidebar
+  // Agent list in the sidebar: open/close, remembered across refreshes
+  const PIPELINE_OPEN_KEY = "buildcore:pipelineOpen";
+  const [pipelineOpen, setPipelineOpenState] = useState(true);
+  const [pipelinePrefLoaded, setPipelinePrefLoaded] = useState(false);
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem(PIPELINE_OPEN_KEY) === "0") setPipelineOpenState(false);
+    } catch {
+      /* storage blocked: keep the default (open) */
+    }
+    setPipelinePrefLoaded(true);
+  }, []);
+  const setPipelineOpen = (open: boolean) => {
+    setPipelineOpenState(open);
+    try {
+      window.localStorage.setItem(PIPELINE_OPEN_KEY, open ? "1" : "0");
+    } catch {
+      /* storage blocked: still works for this visit */
+    }
+  };
   // "Describe the Website Idea" box: grows taller as the text gets longer
   const promptRef = useRef<HTMLTextAreaElement>(null);
   // Profile pop-up menu (opens above the profile logo at the bottom of the sidebar)
@@ -1035,7 +1054,7 @@ export default function EditorClient({
           <div className="px-3 pb-3 pt-1 space-y-1.5">
             {sidebarOpen ? (
               <button
-                onClick={() => setPipelineOpen((v) => !v)}
+                onClick={() => setPipelineOpen(!pipelineOpen)}
                 aria-expanded={pipelineOpen}
                 title={pipelineOpen ? "Hide agents" : "Show agents"}
                 className="group w-full flex items-center justify-between px-1 pb-1"
@@ -1055,7 +1074,7 @@ export default function EditorClient({
               <div className="border-t border-slate-800/80 mb-2" />
             )}
 
-            {(pipelineOpen || !sidebarOpen) && AGENTS.map((agent, index) => {
+            {pipelinePrefLoaded && (pipelineOpen || !sidebarOpen) && AGENTS.map((agent, index) => {
               const Icon = agent.icon;
               const isSelected = activeAgentIndex === index;
               const isLocked = tier === "FREE" && !agent.freeAccessible;
