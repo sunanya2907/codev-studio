@@ -14,6 +14,7 @@ import { scaffoldFiles } from "@/lib/scaffold";
 import {
   TIER_TOKENS,
   CUSTOMIZE_COST,
+  ADVANCED_BUILD_COST,
   STANDARD_PRICE_LABEL,
   PRO_PRICE_LABEL,
   FREE_TRIAL_BUILDS,
@@ -839,11 +840,15 @@ export default function EditorClient({
   // Step 1: ask 3 questions about the idea (free), then build with the answers.
   const [buildQuestions, setBuildQuestions] = useState<BuildQuestion[] | null>(null);
   const [isAsking, setIsAsking] = useState(false);
+  const [advancedMode, setAdvancedMode] = useState(false); // advanced build: open website questions, 3 tokens
 
-  const handleBuildApp = async () => {
+  const handleBuildApp = async (advanced = false) => {
     if (!prompt.trim() || isAsking || !billingReady) return;
 
-    if (tokenBalance <= 0) {
+    if (tokenBalance < (advanced ? ADVANCED_BUILD_COST : 1)) {
+      if (advanced && tokenBalance > 0) {
+        alert(`An advanced build needs ${ADVANCED_BUILD_COST} tokens and you have ${tokenBalance}. Buy more tokens, or use the normal build (1 token).`);
+      }
       setShowPricingModal(true);
       return;
     }
@@ -853,29 +858,45 @@ export default function EditorClient({
       const res = await fetch("/api/clarify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify({ prompt, mode: advanced ? "advanced" : "quick" }),
       });
       const data = await res.json().catch(() => null);
       if (res.ok && Array.isArray(data?.questions) && data.questions.length > 0) {
+        setAdvancedMode(advanced);
         setBuildQuestions(data.questions);
         return;
       }
     } catch {
-      // fall through: build straight from the idea
+      // fall through
     } finally {
       setIsAsking(false);
     }
-    runBuild(prompt);
+    if (advanced) {
+      // Never charge 3 tokens without the advanced questions: ask the person to try again.
+      alert("Could not prepare the advanced questions right now. Please try again in a moment (nothing was charged).");
+      return;
+    }
+    runBuild(prompt); // quick mode: build straight from the idea
   };
 
   // Step 2: the person answered (or skipped): build with the idea plus the answers.
   const handleAnswersSubmit = (answers: { question: string; answer: string }[]) => {
     setBuildQuestions(null);
+    if (advancedMode) {
+      const detail = answers.map((a, i) => `${i + 1}. ${a.question}\n   Answer: ${a.answer}`).join("\n");
+      runBuild(
+        detail
+          ? `${prompt.trim()}\n\nADVANCED REQUIREMENTS (the person answered these in detail; build every page, role and rule they describe, including the admin side and the user side):\n${detail}`
+          : prompt,
+        true
+      );
+      return;
+    }
     const extra = answers.map((a) => `${a.question} ${a.answer}`).join(" | ");
     runBuild(extra ? `${prompt.trim()}\n\nUser needs: ${extra}` : prompt);
   };
 
-  const runBuild = async (finalPrompt: string) => {
+  const runBuild = async (finalPrompt: string, advanced = false) => {
     if (!finalPrompt.trim()) return;
 
     setIsGenerating(true);
@@ -888,7 +909,7 @@ export default function EditorClient({
       const res = await fetch("/api/orchestrate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: finalPrompt }),
+        body: JSON.stringify({ prompt: finalPrompt, advanced }),
       });
 
       let data: any;
@@ -960,7 +981,7 @@ export default function EditorClient({
       if (typeof data.tokenBalance === "number") {
         setTokenBalance(data.tokenBalance);
       } else {
-        setTokenBalance((prev) => Math.max(0, prev - 1));
+        setTokenBalance((prev) => Math.max(0, prev - (advanced ? ADVANCED_BUILD_COST : 1)));
       }
 
       if (data.tier) {
@@ -1515,7 +1536,7 @@ export default function EditorClient({
 
             <div className={`mt-3 flex items-stretch gap-2 ${panelMode === "preview" ? "lg:flex-wrap" : ""}`}>
               <button
-                onClick={handleBuildApp}
+                onClick={() => handleBuildApp(false)}
                 disabled={isGenerating || isAsking || !billingReady}
                 className={`${panelMode === "preview" ? "lg:basis-full" : ""} flex-1 min-w-0 h-10 whitespace-nowrap rounded-lg font-bold text-[11px] uppercase tracking-wide text-white bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-500 hover:brightness-110 active:scale-[0.99] transition shadow-lg shadow-violet-600/30 flex items-center justify-center gap-2 disabled:opacity-50`}
               >
@@ -1557,6 +1578,18 @@ export default function EditorClient({
                 <Mic className="w-4 h-4" strokeWidth={1.75} />
               </button>
             </div>
+
+            {/* Advanced build: its own row (open website questions: pages, admin/user roles, data, rules) */}
+            <button
+              onClick={() => handleBuildApp(true)}
+              disabled={isGenerating || isAsking || !billingReady || !prompt.trim()}
+              title={`Answer 7 detailed questions about pages, admin and user roles, data and rules · ${ADVANCED_BUILD_COST} tokens`}
+              className="mt-2 w-full h-9 rounded-lg text-[11px] font-bold uppercase tracking-wide text-violet-200 bg-gradient-to-r from-violet-500/15 to-cyan-500/15 border border-violet-500/40 hover:border-violet-400 hover:from-violet-500/25 hover:to-cyan-500/25 active:scale-[0.99] transition flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Sparkles className="w-3.5 h-3.5 shrink-0 text-violet-300" />
+              <span className="truncate">Advanced Build</span>
+              <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-violet-500/25 text-[10px] text-violet-100">3 Tokens</span>
+            </button>
           </div>
         </div>
       </section>
@@ -1997,6 +2030,7 @@ export default function EditorClient({
         open={!!buildQuestions}
         idea={prompt}
         questions={buildQuestions || []}
+        advanced={advancedMode}
         onCancel={() => setBuildQuestions(null)}
         onSubmit={handleAnswersSubmit}
       />

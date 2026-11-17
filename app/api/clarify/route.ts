@@ -19,6 +19,28 @@ Rules:
 Answer with ONLY valid JSON, no markdown, in exactly this shape:
 {"questions":[{"question":"...","options":["...","...","..."]}]}`;
 
+const ADVANCED_COUNT = 7;
+
+// Advanced mode: open questions about the WEBSITE itself (pages, roles, login, data, money, rules).
+const buildAdvancedPrompt = (idea: string) => `You are a senior product analyst. A person wants a website or web app built from a short idea. Ask exactly ${ADVANCED_COUNT} advanced, open-ended questions that decide how THIS specific website must be structured. Cover these areas, one question each, in this order:
+1. Pages: which public pages and which signed-in pages must exist, and what each shows.
+2. Roles: who are the users (visitor, normal user, admin, staff, vendor...) and what can each role see and do.
+3. Admin panel: what the admin must manage (users, content, orders, reports, settings, approvals).
+4. Core user flow: the most important thing a user does from start to finish, step by step.
+5. Data: what information must be stored and how records relate (for example users, orders, bookings, messages).
+6. Money and rules: payments, plans, limits, approvals, emails or notifications, anything with business rules. If the idea has no payments, ask about notifications and rules.
+7. Security and edge cases: login method, sensitive data, what must never be allowed, what happens when something goes wrong.
+
+Idea: """${idea}"""
+
+Rules:
+- Every question must mention or clearly fit THIS idea, not a generic website. Use the idea's own words (for example "doctors" and "patients", not "users").
+- Questions are open: they are answered with a sentence or a short list, not yes or no.
+- Each question gets 3 short example answers (max 10 words each) that the person can tap to start from.
+- Same language as the idea. Do not ask about price of the service, hosting or technology.
+Answer with ONLY valid JSON, no markdown, in exactly this shape:
+{"questions":[{"question":"...","options":["...","...","..."]}]}`;
+
 export async function POST(req: Request) {
   try {
     const session = await auth();
@@ -26,7 +48,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Please sign in first." }, { status: 401 });
     }
 
-    let body: { prompt?: unknown };
+    let body: { prompt?: unknown; mode?: unknown };
     try {
       body = await req.json();
     } catch {
@@ -39,21 +61,25 @@ export async function POST(req: Request) {
     }
     if (!aiConfigured()) throw new AiNotConfiguredError();
 
-    // Asking the questions is free: no token is charged here, only the build costs a token.
-    const r = await generateText(buildPrompt(prompt), { deadline: Date.now() + 40_000, attemptTimeoutMs: 30_000 });
+    const advanced = body.mode === "advanced";
+    // Asking the questions is free: no token is charged here, only the build costs tokens.
+    const r = await generateText(advanced ? buildAdvancedPrompt(prompt) : buildPrompt(prompt), {
+      deadline: Date.now() + (advanced ? 50_000 : 40_000),
+      attemptTimeoutMs: advanced ? 40_000 : 30_000,
+    });
     const json = r.text.replace(/```json|```/g, "").trim();
     const parsed = JSON.parse(json.slice(json.indexOf("{"), json.lastIndexOf("}") + 1));
 
     const questions: ClarifyQuestion[] = (Array.isArray(parsed.questions) ? parsed.questions : [])
       .filter((q: any) => q && typeof q.question === "string" && q.question.trim())
-      .slice(0, 3)
+      .slice(0, advanced ? ADVANCED_COUNT : 3)
       .map((q: any, i: number) => ({
         id: `q${i + 1}`,
-        question: String(q.question).trim().slice(0, 160),
+        question: String(q.question).trim().slice(0, advanced ? 260 : 160),
         options: (Array.isArray(q.options) ? q.options : [])
           .filter((o: unknown) => typeof o === "string" && o.trim())
-          .slice(0, 4)
-          .map((o: string) => o.trim().slice(0, 60)),
+          .slice(0, advanced ? 3 : 4)
+          .map((o: string) => o.trim().slice(0, advanced ? 90 : 60)),
       }));
 
     if (questions.length === 0) throw new Error("No questions");

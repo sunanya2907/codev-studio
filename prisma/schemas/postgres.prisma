@@ -113,6 +113,7 @@ model GenerationHistory {
   flow      String?  @db.Text // Agent 6: pseudocode + flowcharts (Markdown with mermaid blocks)
   status    String   @default("DONE") // BUILDING | DONE | FAILED
   error     String?  @db.Text
+  cost      Int      @default(1) // tokens charged for this build (1 normal, 3 advanced); refunded if it fails
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

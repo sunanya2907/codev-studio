@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { reportError } from "@/lib/debug-agent";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
-import { BUILD_COST, CUSTOMIZE_COST, STANDARD_PRICE_LABEL, TOKEN_PRICE_LABEL } from "@/lib/plans";
+import { ADVANCED_BUILD_COST, BUILD_COST, CUSTOMIZE_COST, STANDARD_PRICE_LABEL, TOKEN_PRICE_LABEL } from "@/lib/plans";
 import { getBillingState, reserveTokens, refundTokens } from "@/lib/tokens";
 import { normalizeFiles } from "@/lib/files";
 import { failBuild, reconcileStaleBuilds } from "@/lib/builds";
@@ -31,6 +31,7 @@ export const maxDuration = 300;
 // The model name is env-configurable there (GEMINI_MODEL).
 
 const MAX_PROMPT_LENGTH = 2000; // idea (max 1000 in the editor) + the answers to the 3 questions
+const MAX_ADVANCED_PROMPT_LENGTH = 6000; // idea + the answers to the advanced website questions
 const MAX_INSTRUCTION_LENGTH = 1000;
 const MAX_CODE_LENGTH = 150000; // multi-file modules are bigger than the old single files
 
@@ -169,14 +170,17 @@ export async function POST(req: Request) {
       }
     }
 
-    // CASE 2: Full app build (costs 1 token). Streams live progress, and is stored in the
+    // CASE 2: Full app build (costs 1 token, or 3 for an advanced build). Streams live progress, and is stored in the
     // database from the first second, so closing the tab can never lose a build or a token.
     if (!prompt) {
       return NextResponse.json({ error: "Please describe the app you want to build." }, { status: 400 });
     }
-    if (prompt.length > MAX_PROMPT_LENGTH) {
+    const advanced = body.advanced === true;
+    const buildCost = advanced ? ADVANCED_BUILD_COST : BUILD_COST;
+    const maxPrompt = advanced ? MAX_ADVANCED_PROMPT_LENGTH : MAX_PROMPT_LENGTH;
+    if (prompt.length > maxPrompt) {
       return NextResponse.json(
-        { error: `Prompt is too long (max ${MAX_PROMPT_LENGTH} characters).` },
+        { error: `Prompt is too long (max ${maxPrompt} characters).` },
         { status: 413 }
       );
     }
@@ -193,18 +197,18 @@ export async function POST(req: Request) {
     }
 
     // Reserve the token atomically BEFORE the expensive work.
-    const balanceAfterReserve = await reserveTokens(userId, BUILD_COST);
-    if (balanceAfterReserve === null) return outOfTokens(BUILD_COST);
+    const balanceAfterReserve = await reserveTokens(userId, buildCost);
+    if (balanceAfterReserve === null) return outOfTokens(buildCost);
 
     let buildId: string;
     try {
       const row = await db.generationHistory.create({
-        data: { userId, prompt, spec: "", frontend: "", backend: "", database: "", qa: "", status: "BUILDING" },
+        data: { userId, prompt, spec: "", frontend: "", backend: "", database: "", qa: "", status: "BUILDING", cost: buildCost },
         select: { id: true },
       });
       buildId = row.id;
     } catch (e) {
-      await refundTokens(userId, BUILD_COST);
+      await refundTokens(userId, buildCost);
       throw e;
     }
 
@@ -375,8 +379,8 @@ export async function POST(req: Request) {
           void reportError(genError, { source: "server", route: "/api/orchestrate", method: "POST" });
           const message =
             genError instanceof AiUnavailableError
-              ? `${genError.message} Your token was returned.`
-              : `${genError instanceof Error && genError.message ? genError.message : "The build failed."} Your token was returned.`;
+              ? `${genError.message} Your ${buildCost === 1 ? "token was" : "tokens were"} returned.`
+              : `${genError instanceof Error && genError.message ? genError.message : "The build failed."} Your ${buildCost === 1 ? "token was" : "tokens were"} returned.`;
           await failBuild(userId, buildId, message); // flips the row and refunds, once
           send({ type: "error", error: message });
         } finally {

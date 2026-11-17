@@ -21,6 +21,9 @@ export const TIER_TOKENS: Record<Tier, number> = {
 /** A full 5-agent build. */
 export const BUILD_COST = 1;
 
+/** Advanced build: open website questions (pages, admin/user roles, ...) and a fuller app. */
+export const ADVANCED_BUILD_COST = 3;
+
 /** Re-running a single agent with a custom instruction (one AI call). */
 export const CUSTOMIZE_COST = 1;
 

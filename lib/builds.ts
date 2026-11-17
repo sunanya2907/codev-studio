@@ -1,6 +1,5 @@
 import "server-only";
 import { db } from "@/lib/db";
-import { BUILD_COST } from "@/lib/plans";
 import { refundTokens } from "@/lib/tokens";
 
 /** A build that has been BUILDING longer than this was killed (the host stopped the function). */
@@ -11,12 +10,16 @@ export const BUILD_STALE_MS = 7 * 60 * 1000;
  * that actually flips BUILDING -> FAILED refunds, so a token is never returned two times.
  */
 export async function failBuild(userId: string, historyId: string, message: string): Promise<boolean> {
+  const row = await db.generationHistory.findFirst({
+    where: { id: historyId, userId, status: "BUILDING" },
+    select: { cost: true },
+  });
   const r = await db.generationHistory.updateMany({
     where: { id: historyId, userId, status: "BUILDING" },
     data: { status: "FAILED", error: message.slice(0, 500) },
   });
   if (r.count === 1) {
-    await refundTokens(userId, BUILD_COST);
+    await refundTokens(userId, row?.cost ?? 1);
     return true;
   }
   return false;
@@ -29,6 +32,6 @@ export async function reconcileStaleBuilds(userId: string): Promise<void> {
     select: { id: true },
   });
   for (const s of stale) {
-    await failBuild(userId, s.id, "The build did not finish because the server was interrupted. Your token was returned.");
+    await failBuild(userId, s.id, "The build did not finish because the server was interrupted. Your tokens were returned.");
   }
 }

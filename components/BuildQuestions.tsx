@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Sparkles, X } from "lucide-react";
+import { ADVANCED_BUILD_COST, BUILD_COST } from "@/lib/plans";
 
 export type BuildQuestion = { id: string; question: string; options: string[] };
 
@@ -9,14 +10,22 @@ type Props = {
   open: boolean;
   idea: string;
   questions: BuildQuestion[];
+  /** Advanced mode: open website questions answered in full sentences, costs ADVANCED_BUILD_COST tokens. */
+  advanced?: boolean;
   onCancel: () => void;
   onSubmit: (answers: { question: string; answer: string }[]) => void;
 };
 
-export default function BuildQuestions({ open, idea, questions, onCancel, onSubmit }: Props) {
+export default function BuildQuestions({ open, idea, questions, advanced = false, onCancel, onSubmit }: Props) {
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  // New set of questions (quick or advanced): start with empty answers.
+  useEffect(() => {
+    setAnswers({});
+  }, [questions, advanced]);
   if (!open) return null;
 
+  const maxLen = advanced ? 400 : 120;
+  const cost = advanced ? ADVANCED_BUILD_COST : BUILD_COST;
   const set = (id: string, v: string) => setAnswers((p) => ({ ...p, [id]: v }));
   const submit = () =>
     onSubmit(
@@ -29,7 +38,7 @@ export default function BuildQuestions({ open, idea, questions, onCancel, onSubm
         <div className="flex items-start justify-between gap-3 mb-1">
           <h2 className="text-lg font-extrabold text-white flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-violet-400" />
-            3 quick questions
+            {advanced ? `${questions.length} advanced website questions` : "3 quick questions"}
           </h2>
           <button onClick={onCancel} aria-label="Close" className="p-1 text-slate-400 hover:text-white">
             <X className="w-5 h-5" />
@@ -38,6 +47,13 @@ export default function BuildQuestions({ open, idea, questions, onCancel, onSubm
         <p className="text-xs text-slate-400 mb-5">
           So we build exactly what you need for: <span className="text-slate-200">{idea.slice(0, 80)}</span>
         </p>
+        {advanced && (
+          <p className="text-[11px] text-violet-300/90 bg-violet-500/10 border border-violet-500/20 rounded-lg px-3 py-2 -mt-2 mb-5">
+            Answer in your own words (pages, admin and user roles, login, data, rules). Tap an example to start from it,
+            then edit it. The more detail you give, the closer the website is to what you imagine. Leave a question empty to
+            let the AI decide.
+          </p>
+        )}
 
         <div className="space-y-5">
           {questions.map((q, i) => (
@@ -61,12 +77,22 @@ export default function BuildQuestions({ open, idea, questions, onCancel, onSubm
                   </button>
                 ))}
               </div>
-              <input
-                value={answers[q.id] || ""}
-                onChange={(e) => set(q.id, e.target.value.slice(0, 120))}
-                placeholder="Or type your own answer..."
-                className="w-full bg-[#090D16] border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-violet-500"
-              />
+              {advanced ? (
+                <textarea
+                  value={answers[q.id] || ""}
+                  onChange={(e) => set(q.id, e.target.value.slice(0, maxLen))}
+                  rows={3}
+                  placeholder="Type your answer in detail..."
+                  className="w-full resize-y bg-[#090D16] border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-violet-500"
+                />
+              ) : (
+                <input
+                  value={answers[q.id] || ""}
+                  onChange={(e) => set(q.id, e.target.value.slice(0, maxLen))}
+                  placeholder="Or type your own answer..."
+                  className="w-full bg-[#090D16] border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-violet-500"
+                />
+              )}
             </div>
           ))}
         </div>
@@ -74,10 +100,10 @@ export default function BuildQuestions({ open, idea, questions, onCancel, onSubm
         <div className="mt-6 flex items-center justify-between gap-3">
           <button
             type="button"
-            onClick={() => onSubmit([])}
+            onClick={() => (advanced ? onCancel() : onSubmit([]))}
             className="text-xs font-semibold text-slate-400 hover:text-white transition"
           >
-            Skip & build now
+            {advanced ? "Cancel" : "Skip & build now"}
           </button>
           <button
             type="button"
@@ -85,7 +111,7 @@ export default function BuildQuestions({ open, idea, questions, onCancel, onSubm
             className="px-5 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider text-white bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-500 hover:brightness-110 transition shadow-lg shadow-violet-600/30 flex items-center gap-2"
           >
             <Sparkles className="w-4 h-4" />
-            Build my app (1 Token)
+            Build my app ({cost} Token{cost === 1 ? "" : "s"})
           </button>
         </div>
       </div>
