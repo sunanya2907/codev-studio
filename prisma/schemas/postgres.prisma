@@ -30,6 +30,15 @@ model User {
   tokenPeriodStart DateTime          @default(now()) // start of the current monthly token period (see lib/tokens.ts)
   termsAccepted   Boolean            @default(false)
   termsAcceptedAt DateTime?          // set only when the user accepts the terms
+  // Admin dashboard (see lib/activity.ts): last seen info + block switch
+  blockedAt       DateTime?          // set by an admin: the person can no longer use the app
+  blockedReason   String?
+  lastLoginAt     DateTime?
+  lastLogoutAt    DateTime?
+  lastIp          String?
+  lastCountry     String?
+  lastCity        String?
+  loginCount      Int                @default(0)
   projects        Project[]
   history         GenerationHistory[]
   voiceSessions   VoiceSession[]
@@ -212,4 +221,92 @@ model TesterRedemption {
 
   @@unique([inviteId, userId])
   @@index([userId])
+}
+
+// ---------------------------------------------------------------------------------------------
+// Admin dashboard: who logged in / out and from where, what people did, AI calls, requests, audit.
+// userId columns are plain strings on purpose: these logs must outlive deleted users.
+// ---------------------------------------------------------------------------------------------
+model LoginEvent {
+  id        String   @id @default(cuid())
+  userId    String?
+  email     String?
+  type      String   // LOGIN | LOGOUT | LOGIN_FAILED
+  method    String?  // google | credentials
+  ip        String?
+  country   String?
+  region    String?
+  city      String?
+  device    String?  // e.g. "Chrome on Windows"
+  userAgent String?  @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([type, createdAt])
+  @@index([createdAt])
+}
+
+model UserActivity {
+  id        String   @id @default(cuid())
+  userId    String
+  kind      String   // BUILD | CUSTOMIZE | QUESTIONS | ENHANCE | DOMAIN_SEARCH | VOICE | TESTER_REDEEM | REQUEST
+  detail    String?  @db.Text // what the person typed / searched
+  tokens    Int      @default(0)
+  ip        String?
+  country   String?
+  city      String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([kind, createdAt])
+  @@index([createdAt])
+}
+
+// One row per AI provider call (success or failure): the numbers behind the API / usage page.
+model AiCallLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  purpose   String?
+  model     String
+  ok        Boolean
+  ms        Int      @default(0)
+  error     String?  @db.Text
+  tokensIn  Int      @default(0)
+  tokensOut Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([model, createdAt])
+}
+
+// A person asks the admin for something (tester access, more tokens, an upgrade). The admin accepts or rejects.
+model AccessRequest {
+  id          String    @id @default(cuid())
+  userId      String
+  email       String
+  type        String    // TESTER | TOKENS | UPGRADE | OTHER
+  message     String    @db.Text
+  status      String    @default("PENDING") // PENDING | ACCEPTED | REJECTED
+  grantTier   String?
+  grantTokens Int       @default(0)
+  grantDays   Int       @default(0)
+  adminNote   String?   @db.Text
+  decidedBy   String?
+  decidedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([status, createdAt])
+  @@index([userId])
+}
+
+// Everything an admin changes (tokens, plans, blocks, requests) is written here.
+model AdminAction {
+  id           String   @id @default(cuid())
+  adminEmail   String
+  action       String
+  targetUserId String?
+  detail       String?  @db.Text
+  createdAt    DateTime @default(now())
+
+  @@index([createdAt])
 }

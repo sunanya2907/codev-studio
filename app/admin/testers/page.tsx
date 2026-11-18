@@ -3,7 +3,11 @@ import { useCallback, useEffect, useState } from "react";
 
 type Invite = {
   id: string; label: string; tier: string; tokens: number; accessDays: number;
-  maxUses: number; uses: number; expiresAt: string; revokedAt: string | null;
+  maxUses: number; uses: number; expiresAt: string; revokedAt: string | null; createdAt?: string; createdBy?: string;
+  redemptions?: {
+    redeemedAt: string;
+    user: { id: string; email: string; name: string | null; tier: string; tokenBalance: number; lastLoginAt: string | null; lastCountry: string | null; lastCity: string | null; loginCount: number };
+  }[];
 };
 
 export default function TesterAdmin() {
@@ -72,13 +76,36 @@ export default function TesterAdmin() {
         {invites.map((i) => {
           const dead = !!i.revokedAt || new Date(i.expiresAt) < new Date();
           return (
-            <li key={i.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-neutral-800 bg-neutral-900/60 p-3 text-sm">
+            <li key={i.id} className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-3 text-sm">
+             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <span className="font-medium">{i.label}</span>{" "}
                 <span className="text-xs text-neutral-400">{i.tier} · {i.tokens} tokens · {i.accessDays}d · {i.uses}/{i.maxUses} used · link until {new Date(i.expiresAt).toLocaleDateString()}</span>
                 {dead && <span className="ml-2 rounded bg-neutral-700 px-2 py-0.5 text-xs">{i.revokedAt ? "revoked" : "expired"}</span>}
               </div>
               {!i.revokedAt && <button disabled={busy} onClick={() => post({ action: "revoke", id: i.id })} className="rounded border border-neutral-600 px-3 py-1 text-xs">Revoke</button>}
+             </div>
+             {/* Tracking: who used this link, when, from where, and whether they are still active */}
+             <details className="mt-3">
+               <summary className="cursor-pointer text-xs text-violet-300">
+                 {i.redemptions?.length ?? 0} {(i.redemptions?.length ?? 0) === 1 ? "person" : "people"} used this link
+               </summary>
+               {(i.redemptions?.length ?? 0) === 0 ? (
+                 <p className="mt-2 text-xs text-neutral-500">Nobody yet.</p>
+               ) : (
+                 <ul className="mt-2 divide-y divide-neutral-800 text-xs">
+                   {i.redemptions!.map((r) => (
+                     <li key={r.user.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 py-2">
+                       <a href={`/admin/users/${r.user.id}`} className="font-medium text-white hover:underline">{r.user.email}</a>
+                       <span className="text-neutral-400">redeemed {new Date(r.redeemedAt).toLocaleString()}</span>
+                       <span className="text-neutral-400">{[r.user.lastCity, r.user.lastCountry].filter(Boolean).join(", ") || "location unknown"}</span>
+                       <span className="text-neutral-400">{r.user.loginCount} logins{r.user.lastLoginAt ? `, last ${new Date(r.user.lastLoginAt).toLocaleDateString()}` : ""}</span>
+                       <span className="text-neutral-400">{r.user.tier}, {r.user.tokenBalance} tokens left</span>
+                     </li>
+                   ))}
+                 </ul>
+               )}
+             </details>
             </li>
           );
         })}

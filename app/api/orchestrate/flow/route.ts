@@ -54,7 +54,7 @@ export async function POST(req: Request) {
     try {
       for (let attempt = 0; attempt < 2; attempt++) {
         const extra = attempt === 0 ? "" : "\n\nYOUR PREVIOUS ANSWER HAD NO VALID mermaid FLOWCHART. Return the COMPLETE answer again; every diagram must be a ```mermaid block starting with the line 'flowchart TD'.";
-        const r = await generateText(prompt + extra, { deadline, attemptTimeoutMs: 150_000, maxOutputTokens: 8192 });
+        const r = await generateText(prompt + extra, { deadline, attemptTimeoutMs: 150_000, maxOutputTokens: 8192, meta: { userId, purpose: "flow" } });
         text = r.text.trim();
         if ((text.match(/```/g) || []).length === 2 && text.startsWith("```") && text.endsWith("```")) {
           text = text.replace(/^```[a-zA-Z0-9_-]*[ \t]*\r?\n?/, "").replace(/\r?\n?```$/, "").trim();

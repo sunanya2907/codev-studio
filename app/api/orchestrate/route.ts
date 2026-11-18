@@ -7,6 +7,7 @@ import { getBillingState, reserveTokens, refundTokens } from "@/lib/tokens";
 import { normalizeFiles } from "@/lib/files";
 import { failBuild, reconcileStaleBuilds } from "@/lib/builds";
 import { qaPendingText } from "@/lib/qa-review";
+import { logActivity } from "@/lib/activity";
 import { validateBackend, validateFrontend, validateSchema, validateSrs } from "@/lib/validate";
 import { mergeContract, validateContract } from "@/lib/contract";
 import { isHealthcareIdea } from "@/lib/healthcare";
@@ -93,7 +94,7 @@ export async function POST(req: Request) {
 
     const callAI = async (systemPrompt: string, extra: Partial<GenerateOptions> = {}) => {
       // Gemini only; temporary errors are retried inside lib/ai.ts.
-      const result = await generateText(systemPrompt, { deadline, ...extra });
+      const result = await generateText(systemPrompt, { deadline, meta: { userId: session.user?.id, purpose: agent ? "customize" : "build" }, ...extra });
       if (!providersUsed.includes(result.provider)) providersUsed.push(result.provider);
       let text = result.text.trim();
 
@@ -145,6 +146,7 @@ export async function POST(req: Request) {
       try {
         const customPrompt = `You are a senior full-stack AI agent updating the "${agent}" module.\n${customizeHint(agent)}\n\nCurrent Code/Spec:\n${currentCode}\n\nUser Instruction: ${instruction}\n\nReturn ONLY the updated code or markdown without explanations.`;
         let updatedCode = await callAI(customPrompt);
+        await logActivity(session.user.id, "CUSTOMIZE", `[${agent}] ${instruction}`, CUSTOMIZE_COST);
         if (agent === "frontend") updatedCode = normalizeFiles(updatedCode, "app/page.tsx");
         if (agent === "backend") updatedCode = normalizeFiles(updatedCode, "app/api/route.ts");
 
@@ -199,6 +201,8 @@ export async function POST(req: Request) {
     // Reserve the token atomically BEFORE the expensive work.
     const balanceAfterReserve = await reserveTokens(userId, buildCost);
     if (balanceAfterReserve === null) return outOfTokens(buildCost);
+
+    await logActivity(userId, "BUILD", `${advanced ? "[advanced] " : ""}${prompt}`, buildCost);
 
     let buildId: string;
     try {

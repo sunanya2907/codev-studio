@@ -20,7 +20,16 @@ export async function GET() {
     take: 100,
     select: {
       id: true, label: true, tier: true, tokens: true, accessDays: true,
-      maxUses: true, uses: true, expiresAt: true, revokedAt: true, createdAt: true,
+      maxUses: true, uses: true, expiresAt: true, revokedAt: true, createdAt: true, createdBy: true,
+      // who used each link: when, from where, and what they have done since (admin tracking)
+      redemptions: {
+        orderBy: { redeemedAt: "desc" },
+        take: 100,
+        select: {
+          redeemedAt: true,
+          user: { select: { id: true, email: true, name: true, tier: true, tokenBalance: true, lastLoginAt: true, lastCountry: true, lastCity: true, loginCount: true } },
+        },
+      },
     },
   });
   return NextResponse.json({ invites });

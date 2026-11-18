@@ -125,6 +125,7 @@ export async function POST(req: Request) {
     const result = await generateText(prompt, {
       deadline: Date.now() + 40_000,
       attemptTimeoutMs: 20_000,
+      meta: { userId, purpose: "voice" },
     });
 
     if (editMode && finalize) {

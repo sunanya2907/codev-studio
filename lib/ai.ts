@@ -2,6 +2,7 @@ import "server-only"; // build fails if a client component ever imports this fil
 // AI helper. Every AI call in the app goes through generateText().
 // Gemini is the only provider (set GEMINI_API_KEY). Plain REST call: no extra npm packages.
 // Provider fail-over was removed on purpose; it can be added back later.
+import { logAiCall } from "@/lib/activity"; // every call is counted for the admin dashboard (/admin/api)
 
 export type ProviderId = "gemini";
 
@@ -42,6 +43,8 @@ export type GenerateOptions = {
   attemptTimeoutMs?: number;
   /** Cap on the answer length (default 32768). Small jobs such as a review can use less. */
   maxOutputTokens?: number;
+  /** Who / what the call is for: only used for the admin usage statistics. */
+  meta?: { userId?: string | null; purpose?: string };
 };
 
 const RETRIES = 2; // extra tries on temporary Gemini errors (overload / rate limit / timeout)
@@ -95,6 +98,7 @@ async function generateOnce(prompt: string, opts: GenerateOptions, all: AiAttemp
     const a: AiAttempt = { provider: "gemini", ok: false, error: `[${model}] ${error}`, ms: Date.now() - started };
     all.push(a);
     console.error("GEMINI REQUEST FAILED:", JSON.stringify(a));
+    void logAiCall({ userId: opts.meta?.userId, purpose: opts.meta?.purpose, model, ok: false, ms: a.ms, error });
     throw new AiUnavailableError([a]);
   };
   if (remaining < 3_000) return fail("Not enough time left");
@@ -138,6 +142,8 @@ async function generateOnce(prompt: string, opts: GenerateOptions, all: AiAttemp
     let finishReason = "";
     let blockReason = "";
     let firstChunkMs = 0;
+    let tokensIn = 0;
+    let tokensOut = 0;
     const handleEvent = (raw: string) => {
       const line = raw.split(/\r?\n/).find((l) => l.startsWith("data:"));
       if (!line) return;
@@ -151,6 +157,11 @@ async function generateOnce(prompt: string, opts: GenerateOptions, all: AiAttemp
       }
       if (data?.error) fail(`HTTP ${data.error.code || 500}: ${String(data.error.message || "").slice(0, 280)}`);
       if (data?.promptFeedback?.blockReason) blockReason = String(data.promptFeedback.blockReason);
+      const um = data?.usageMetadata; // token counts reported by Gemini (used for the usage statistics)
+      if (um) {
+        tokensIn = Number(um.promptTokenCount) || tokensIn;
+        tokensOut = (Number(um.candidatesTokenCount) || 0) + (Number(um.thoughtsTokenCount) || 0) || tokensOut;
+      }
       const cand = data?.candidates?.[0];
       if (cand?.finishReason) finishReason = String(cand.finishReason);
       for (const p of cand?.content?.parts ?? []) if (typeof p?.text === "string" && !p?.thought) text += p.text;
@@ -177,6 +188,7 @@ async function generateOnce(prompt: string, opts: GenerateOptions, all: AiAttemp
     }
     const ms = Date.now() - started;
     all.push({ provider: "gemini", ok: true, ms });
+    await logAiCall({ userId: opts.meta?.userId, purpose: opts.meta?.purpose, model, ok: true, ms, tokensIn, tokensOut });
     // Timing line for the Vercel logs: how long Gemini took to start and to finish.
     console.log("GEMINI OK", JSON.stringify({ model, firstTokenMs: firstChunkMs, totalMs: ms, chars: text.length, finishReason }));
     return { text, provider: "gemini", model, attempts: all };

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { AiNotConfiguredError, aiConfigured, generateText } from "@/lib/ai";
+import { logActivity } from "@/lib/activity";
 
 export const maxDuration = 60;
 
@@ -37,8 +38,9 @@ export async function POST(req: Request) {
     }
     if (!aiConfigured()) throw new AiNotConfiguredError();
 
+    await logActivity(session.user.id, "ENHANCE", prompt);
     // Free: enhancing the idea does not use a token, only the build does.
-    const r = await generateText(buildPrompt(prompt), { deadline: Date.now() + 40_000, attemptTimeoutMs: 30_000 });
+    const r = await generateText(buildPrompt(prompt), { deadline: Date.now() + 40_000, attemptTimeoutMs: 30_000, meta: { userId: session.user.id, purpose: "enhance" } });
     const text = r.text
       .replace(/```[a-z]*|```/g, "")
       .replace(/[*_#`>]/g, "")

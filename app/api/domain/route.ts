@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
+import { logActivity } from "@/lib/activity";
 import {
   VercelApiError,
   checkAvailability,
@@ -67,6 +68,7 @@ export async function GET(request: Request) {
     }
     const suggest = searchParams.get("suggest") === "true";
     const { label, exact } = parsed;
+    await logActivity(userId, "DOMAIN_SEARCH", `${label}${suggest ? " (suggestions)" : ""}`);
 
     // What to look up
     let candidates: string[];

@@ -6,6 +6,7 @@ import type { Adapter } from "next-auth/adapters";
 import { db } from "@/lib/db";
 import bcrypt from "bcryptjs";
 import { verificationEnabled } from "@/lib/email-verify";
+import { logLogin } from "@/lib/activity";
 
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -99,16 +100,47 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         // Account exists but has no password => it was created with Google.
         // It must NOT be possible to log into it with an arbitrary password.
-        if (!user.password) return null;
+        if (!user.password) {
+          await logLogin({ userId: user.id, email, type: "LOGIN_FAILED", method: "credentials" });
+          return null;
+        }
 
         const isValid = await bcrypt.compare(password, user.password);
-        if (!isValid) return null;
+        if (!isValid) {
+          await logLogin({ userId: user.id, email, type: "LOGIN_FAILED", method: "credentials" });
+          return null;
+        }
 
         return { id: user.id, name: user.name, email: user.email };
       },
     }),
   ],
+  // Admin dashboard: every login and logout is recorded with IP, location and device (lib/activity.ts).
+  events: {
+    async signIn({ user, account }) {
+      await logLogin({ userId: user.id, email: user.email, type: "LOGIN", method: account?.provider });
+    },
+    async signOut(message) {
+      const token = (message as { token?: { sub?: string; email?: string | null } | null }).token;
+      await logLogin({ userId: token?.sub, email: token?.email, type: "LOGOUT" });
+    },
+  },
   callbacks: {
+    // An admin can block a person (users.blockedAt). A blocked person cannot sign in at all.
+    async signIn({ user, account }) {
+      const email = user?.email?.toLowerCase();
+      if (!email) return true;
+      try {
+        const u = await db.user.findUnique({ where: { email }, select: { blockedAt: true } });
+        if (u?.blockedAt) {
+          await logLogin({ email, type: "LOGIN_FAILED", method: `${account?.provider ?? "unknown"}:blocked` });
+          return false;
+        }
+      } catch {
+        // database unreachable: do not lock everybody out
+      }
+      return true;
+    },
     // Runs on every sign-in and every session read.
     // 1) On sign-in `user` is the account that JUST logged in: the cookie is bound to it, so an old
     //    login (for example another Gmail) can never survive a new sign-in.
@@ -120,12 +152,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         try {
           const u = await db.user.findUnique({
             where: { id: token.sub },
-            select: { name: true, email: true, image: true, emailVerified: true },
+            select: { name: true, email: true, image: true, emailVerified: true, blockedAt: true },
           });
           if (u) {
             token.name = u.name;
             token.email = u.email;
             token.picture = u.image;
+            // Blocked by an admin: takes effect on the very next request, even with a valid cookie.
+            token.blocked = !!u.blockedAt;
             // Email verification: when it is switched on, the account is only usable after the
             // 6-digit code from the email was entered (users.emailVerified is set).
             let verified = !!u.emailVerified || !verificationEnabled();
@@ -150,6 +184,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     // /api/orchestrate and /api/history answer 401 for logged-in users.
     async session({ session, token }) {
       if (session.user && token?.sub) {
+        // Blocked by an admin: the session carries no id, so every API answers "sign in" (401).
+        if (token.blocked === true) {
+          session.user = { blocked: true } as unknown as typeof session.user;
+          return session;
+        }
         // Not verified yet: the session carries NO id, email or name. Every API that needs
         // `session.user.id` (or an admin email) therefore answers "sign in", and the editor
         // page sends the person to /verify. Only the verify endpoints use `pendingId`.

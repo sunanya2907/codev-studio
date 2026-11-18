@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { AiNotConfiguredError, aiConfigured, generateText } from "@/lib/ai";
+import { logActivity } from "@/lib/activity";
 
 export const maxDuration = 60;
 
@@ -62,8 +63,10 @@ export async function POST(req: Request) {
     if (!aiConfigured()) throw new AiNotConfiguredError();
 
     const advanced = body.mode === "advanced";
+    await logActivity(session.user.id, "QUESTIONS", `${advanced ? "[advanced] " : ""}${prompt}`);
     // Asking the questions is free: no token is charged here, only the build costs tokens.
     const r = await generateText(advanced ? buildAdvancedPrompt(prompt) : buildPrompt(prompt), {
+      meta: { userId: session.user.id, purpose: "questions" },
       deadline: Date.now() + (advanced ? 50_000 : 40_000),
       attemptTimeoutMs: advanced ? 40_000 : 30_000,
     });

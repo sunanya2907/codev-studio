@@ -289,10 +289,12 @@ export default function EditorClient({
   userName = "Developer",
   userEmail = "",
   userImage = null,
+  isAdmin = false,
 }: {
   userName?: string;
   userEmail?: string;
   userImage?: string | null;
+  isAdmin?: boolean;
 }) {
   // Navigation & View States
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -1466,6 +1468,24 @@ export default function EditorClient({
                 >
                   <FileText className="w-4 h-4 text-slate-400" /> Terms &amp; Conditions
                 </Link>
+                <Link
+                  role="menuitem"
+                  href="/request"
+                  onClick={() => setProfileMenuPos(null)}
+                  className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-slate-200 hover:bg-slate-800/70 transition"
+                >
+                  <FileText className="w-4 h-4 text-slate-400" /> Request access or tokens
+                </Link>
+                {isAdmin && (
+                  <Link
+                    role="menuitem"
+                    href="/admin"
+                    onClick={() => setProfileMenuPos(null)}
+                    className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-violet-200 hover:bg-slate-800/70 transition"
+                  >
+                    <ShieldCheck className="w-4 h-4 text-violet-400" /> Admin dashboard
+                  </Link>
+                )}
 
                 <div className="my-1.5 border-t border-slate-800" />
 

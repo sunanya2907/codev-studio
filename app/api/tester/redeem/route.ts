@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { redeemInvite } from "@/lib/tester";
+import { logActivity } from "@/lib/activity";
 
 export async function POST(req: Request) {
   const session = await auth();
@@ -18,6 +19,7 @@ export async function POST(req: Request) {
   try {
     const r = await redeemInvite(userId, code);
     if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
+    await logActivity(userId, "TESTER_REDEEM", `Tester link redeemed (${r.tier})`);
     return NextResponse.json(r);
   } catch (e) {
     console.error("TESTER REDEEM ERROR:", e);

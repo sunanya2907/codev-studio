@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
+import { logActivity } from "@/lib/activity";
 import { VOICE_SECONDS_PER_TOKEN } from "@/lib/plans";
 import { getBillingState } from "@/lib/tokens";
 import { chargeElapsed, endVoiceSession, startVoiceSession } from "@/lib/voice";
@@ -30,6 +31,7 @@ export async function POST(req: Request) {
           { status: 402 }
         );
       }
+      await logActivity(userId, "VOICE", "Voice builder session started");
       return NextResponse.json({ ...started, secondsPerToken: VOICE_SECONDS_PER_TOKEN });
     }
 

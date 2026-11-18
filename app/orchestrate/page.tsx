@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
+import { isDebugAdmin } from "@/lib/debug-agent";
 import EditorClient from "./EditorClient";
 
 // Always rendered for the person who is signed in right now, never served from a cache.
@@ -37,6 +38,7 @@ export default async function OrchestratePage() {
       userName={dbUser.name || dbUser.email.split("@")[0] || "Developer"}
       userEmail={dbUser.email}
       userImage={dbUser.image}
+      isAdmin={isDebugAdmin(dbUser.email)}
     />
   );
 }

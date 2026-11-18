@@ -57,7 +57,7 @@ export async function POST(req: Request) {
           isTrackingIdea(row.prompt),
           isHealthcareIdea(row.prompt)
         ),
-        { deadline, attemptTimeoutMs: 150_000, maxOutputTokens: 8192 }
+        { deadline, attemptTimeoutMs: 150_000, maxOutputTokens: 8192, meta: { userId, purpose: "qa" } }
       );
       text = r.text.trim();
       if ((text.match(/```/g) || []).length === 2 && text.startsWith("```") && text.endsWith("```")) {
