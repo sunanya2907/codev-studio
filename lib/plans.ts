@@ -12,23 +12,23 @@ export const TIER_RANK: Record<Tier, number> = {
 
 /** Tokens a plan includes per billing month. */
 export const TIER_TOKENS: Record<Tier, number> = {
-  FREE: 3,
+  FREE: 5,
   STANDARD: 10,
   PRO: 50,
   EXCLUSIVE: 250,
 };
 
 /** A full 5-agent build. */
-export const BUILD_COST = 5;
+export const BUILD_COST: number = 5;
 
 /** Advanced build: open website questions (pages, admin/user roles, ...) and a fuller app. */
-export const ADVANCED_BUILD_COST = 7;
+export const ADVANCED_BUILD_COST: number = 7;
 
 /** One message in the project chat (review or change the whole website). Not shown in the UI on purpose. */
-export const CHAT_COST = 2;
+export const CHAT_COST: number = 2;
 
 /** Re-running a single agent with a custom instruction (one AI call). */
-export const CUSTOMIZE_COST = 1;
+export const CUSTOMIZE_COST: number = 1;
 
 /** Monthly subscription prices in US cents (charged through Stripe Checkout). */
 export const PLAN_PRICE_CENTS: Record<"STANDARD" | "PRO", number> = {
@@ -73,4 +73,5 @@ export const inr = (paise: number) => `\u20B9${(paise / 100).toLocaleString("en-
 export const STANDARD_PRICE_LABEL = usd(PLAN_PRICE_CENTS.STANDARD);
 export const PRO_PRICE_LABEL = usd(PLAN_PRICE_CENTS.PRO);
 export const TOKEN_PRICE_LABEL = usd(TOKEN_PRICE_CENTS);
-export const FREE_TRIAL_BUILDS = TIER_TOKENS.FREE;
+/** Free plan: 5 tokens = one normal build. */
+export const FREE_TRIAL_BUILDS = Math.max(1, Math.floor(TIER_TOKENS.FREE / BUILD_COST));

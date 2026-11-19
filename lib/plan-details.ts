@@ -1,7 +1,6 @@
 // The plan cards shown in the editor popup AND on /pricing. Every number comes from
 // lib/plans.ts, so changing a price or allowance there updates every screen.
 import {
-  FREE_TRIAL_BUILDS,
   PLAN_PRICE_CENTS,
   TIER_TOKENS,
   TOKEN_PRICE_LABEL,
@@ -28,10 +27,10 @@ export const PLAN_DETAILS: PlanDetail[] = [
     price: usd(0),
     period: "/ month",
     tokens: TIER_TOKENS.FREE,
-    badge: `${FREE_TRIAL_BUILDS} Free Trial Builds`,
+    badge: `${TIER_TOKENS.FREE} Free Tokens`,
     desc: "Build and run your app in Live Preview. Code is locked.",
     features: [
-      `${FREE_TRIAL_BUILDS} Free Trial Builds (one-time)`,
+      `${TIER_TOKENS.FREE} Free Tokens (one-time, one trial build)`,
       "Live Preview of your app",
       "Locked: code view, copy, edit & export",
     ],

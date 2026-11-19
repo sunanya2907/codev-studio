@@ -20,7 +20,7 @@ import {
   Zap,
 } from "lucide-react";
 import { PLAN_DETAILS } from "@/lib/plan-details";
-import { FREE_TRIAL_BUILDS } from "@/lib/plans";
+import { TIER_TOKENS } from "@/lib/plans";
 
 // Auth.js reports failures as short codes. Turn them into something a person can act on.
 const AUTH_ERRORS: Record<string, string> = {
@@ -248,7 +248,7 @@ export default function Landing({ builds }: { builds: number | null }) {
           </div>
 
           <ul className="bc-rise mt-8 flex flex-wrap gap-x-6 gap-y-2 text-xs text-slate-400" style={{ animationDelay: "0.6s" }}>
-            <li className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-emerald-400" /> {FREE_TRIAL_BUILDS} free builds, no card needed</li>
+            <li className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-emerald-400" /> {TIER_TOKENS.FREE} free tokens, no card needed</li>
             <li className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-emerald-400" /> Live preview while it builds</li>
             <li className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-emerald-400" /> Pay with UPI, cards or wallets</li>
           </ul>

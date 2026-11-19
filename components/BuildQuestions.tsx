@@ -111,7 +111,7 @@ export default function BuildQuestions({ open, idea, questions, advanced = false
             className="px-5 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider text-white bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-500 hover:brightness-110 transition shadow-lg shadow-violet-600/30 flex items-center gap-2"
           >
             <Sparkles className="w-4 h-4" />
-            Build my app ({cost} Token{cost === 1 ? "" : "s"})
+            Build my app ({cost} Tokens)
           </button>
         </div>
       </div>

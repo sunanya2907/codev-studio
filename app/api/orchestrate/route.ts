@@ -383,8 +383,8 @@ export async function POST(req: Request) {
           void reportError(genError, { source: "server", route: "/api/orchestrate", method: "POST" });
           const message =
             genError instanceof AiUnavailableError
-              ? `${genError.message} Your ${buildCost === 1 ? "token was" : "tokens were"} returned.`
-              : `${genError instanceof Error && genError.message ? genError.message : "The build failed."} Your ${buildCost === 1 ? "token was" : "tokens were"} returned.`;
+              ? `${genError.message} Your ${"tokens were"} returned.`
+              : `${genError instanceof Error && genError.message ? genError.message : "The build failed."} Your ${"tokens were"} returned.`;
           await failBuild(userId, buildId, message); // flips the row and refunds, once
           send({ type: "error", error: message });
         } finally {

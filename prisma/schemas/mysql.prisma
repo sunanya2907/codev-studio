@@ -25,7 +25,7 @@ model User {
   stripeSubscriptionId String?
   planExpiresAt   DateTime?          // Razorpay plans are prepaid for 30 days; null for Stripe subscriptions
   tier            Tier               @default(FREE)
-  tokenBalance    Int                @default(3)
+  tokenBalance    Int                @default(5)
   voiceSeconds    Int                @default(0) // prepaid voice time; 1 token buys VOICE_SECONDS_PER_TOKEN
   tokenPeriodStart DateTime          @default(now()) // start of the current monthly token period (see lib/tokens.ts)
   termsAccepted   Boolean            @default(false)
