@@ -14,6 +14,8 @@ export function scaffoldFiles(appName: string): GenFile[] {
           private: true,
           scripts: {
             dev: "next dev",
+            "db:push": "prisma db push",
+            "db:seed": "node prisma/seed.mjs",
             build: "prisma generate && next build",
             start: "next start",
             postinstall: "prisma generate",
@@ -154,7 +156,12 @@ export function scaffoldFiles(appName: string): GenFile[] {
     {
       path: ".env.example",
       content:
-        'DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/DBNAME"\n# Any long random text, used to sign login cookies\nSESSION_SECRET="change-me-to-a-long-random-string"\n',
+        'DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/DBNAME"\n# Any long random text (32+ chars), used to sign login cookies\nSESSION_SECRET="change-me-to-a-long-random-string"\n# The person who registers with this email becomes the admin\nADMIN_EMAIL="you@example.com"\n# Public address of the site (used in password-reset links)\nNEXT_PUBLIC_APP_URL="http://localhost:3000"\n',
+    },
+    {
+      path: "prisma/seed.mjs",
+      content:
+        'import { PrismaClient } from "@prisma/client";\nimport bcrypt from "bcryptjs";\n\nconst db = new PrismaClient();\nconst email = (process.env.ADMIN_EMAIL || "admin@example.com").toLowerCase();\nconst password = process.env.ADMIN_PASSWORD || "ChangeMe123!";\n\n// Creates the admin account (if the User model has these fields). Add your own sample data below.\nawait db.user\n  .upsert({\n    where: { email },\n    update: { role: "ADMIN" },\n    create: { email, name: "Admin", passwordHash: await bcrypt.hash(password, 10), role: "ADMIN" },\n  })\n  .then(() => console.log("Admin ready:", email, "/ password:", password, "(change it after login)"))\n  .catch((e) => console.error("Seed skipped:", e.message));\nawait db.$disconnect();\n',
     },
     { path: ".gitignore", content: "node_modules\n.next\n.env\n.env.local\nnext-env.d.ts\n" },
     {

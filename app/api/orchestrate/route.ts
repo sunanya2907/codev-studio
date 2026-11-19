@@ -302,7 +302,7 @@ export async function POST(req: Request) {
           // A big frontend (6 to 12 files) can take 200+ seconds to write, longer than Vercel's 300 second limit
           // leaves on the Hobby plan. So ask for a compact frontend for Live Preview builds, and whenever less than
           // ~300 seconds are left (always the case on Hobby). Local runs and a Pro plan with a longer limit keep the full size.
-          const compactFrontend = isFree || (!!process.env.VERCEL && deadline - Date.now() < 300_000);
+          const compactFrontend = isFree || (!!process.env.VERCEL && !process.env.BUILD_FULL_SITE && deadline - Date.now() < 300_000);
           console.log("FRONTEND SIZE", JSON.stringify({ buildId, compact: compactFrontend, secondsLeft: Math.round((deadline - Date.now()) / 1000) }));
           const frontendRun = () =>
             runAgent("frontend", frontendPrompt(contract, tracking, healthcare, compactFrontend), (t) => normalizeFiles(t, "app/page.tsx"), validateFrontend);

@@ -7,6 +7,7 @@ import {
 } from "@/components/admin/ui";
 
 type Detail = {
+  verificationOn: boolean;
   user: {
     id: string; email: string; name: string | null; tier: string; tokenBalance: number; voiceSeconds: number; planExpiresAt: string | null;
     createdAt: string; lastLoginAt: string | null; lastLogoutAt: string | null; lastIp: string | null; lastCountry: string | null; lastCity: string | null;
@@ -63,7 +64,7 @@ export default function AdminUserDetail() {
           <div className="flex flex-wrap gap-2">
             <Badge tone={tierTone(u.tier)}>{u.tier}</Badge>
             {u.blockedAt && <Badge tone="bad">blocked</Badge>}
-            <Badge tone={u.verified ? "good" : "warn"}>{u.verified ? "email verified" : "not verified"}</Badge>
+            {u.verified ? <Badge tone="good">email verified</Badge> : d.verificationOn ? <Badge tone="warn">not verified</Badge> : <Badge>verification is off</Badge>}
             {d.providers.map((p) => <Badge key={p}>{p}</Badge>)}
             {u.hasPassword && <Badge>password</Badge>}
           </div>

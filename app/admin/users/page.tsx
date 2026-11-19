@@ -24,7 +24,7 @@ export default function AdminUsers() {
   }, [q]);
 
   const url = `/api/admin/users?page=${page}&sort=${sort}&tier=${tier}&status=${status}&q=${encodeURIComponent(term)}`;
-  const { data, error, loading } = useApi<{ total: number; size: number; users: Row[] }>(url);
+  const { data, error, loading } = useApi<{ total: number; size: number; verificationOn: boolean; users: Row[] }>(url);
 
   return (
     <main className="mx-auto w-full max-w-6xl">
@@ -62,7 +62,7 @@ export default function AdminUsers() {
                   <div className="flex items-center gap-2 text-xs text-slate-500">
                     {u.name}
                     {u.blockedAt && <Badge tone="bad">blocked</Badge>}
-                    {!u.verified && <Badge tone="warn">unverified</Badge>}
+                    {data.verificationOn && !u.verified && <Badge tone="warn">unverified</Badge>}
                   </div>
                 </td>
                 <td className="px-3 py-2"><Badge tone={tierTone(u.tier)}>{u.tier}</Badge></td>

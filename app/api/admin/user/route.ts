@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { adminGuard } from "@/lib/admin";
 import { logAdminAction } from "@/lib/activity";
 import { clampInt, isTier } from "@/lib/admin-actions";
+import { verificationEnabled } from "@/lib/email-verify";
 
 export const dynamic = "force-dynamic";
 
@@ -56,6 +57,7 @@ export async function GET(req: Request) {
 
   const stat = Object.fromEntries(buildStats.map((b) => [b.status, { n: b._count._all, tokens: b._sum.cost ?? 0 }]));
   return NextResponse.json({
+    verificationOn: verificationEnabled(),
     user: { ...safe, verified: !!safe.emailVerified, hasPassword: !!password, hasStripe: !!stripeCustomerId || !!stripeSubscriptionId },
     providers: accounts.map((a) => a.provider),
     stats: {

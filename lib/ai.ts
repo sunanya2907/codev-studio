@@ -7,7 +7,9 @@ import { logAiCall } from "@/lib/activity"; // every call is counted for the adm
 export type ProviderId = "gemini";
 
 const DEFAULT_MODEL = "gemini-3.8-flash";
-const DEFAULT_MAX_TOKENS = 32768;
+const DEFAULT_MAX_TOKENS = 65536;
+// Maximum "thinking": the model plans the whole site before writing code. Override with GEMINI_THINKING_BUDGET (0 = off, -1 = dynamic).
+const DEFAULT_THINKING_BUDGET = "24576";
 
 export class AiNotConfiguredError extends Error {
   constructor() {
@@ -87,10 +89,10 @@ async function generateOnce(prompt: string, opts: GenerateOptions, all: AiAttemp
     opts.attemptTimeoutMs ?? (Number(envOf("AI_ATTEMPT_TIMEOUT_MS")) || 240_000);
   // If Gemini sends NOTHING for this long the call is treated as stuck, dropped, and retried on the next model.
   // (Before this, one stuck call could use the whole 300 second limit and the build failed.)
-  const stallMs = Number(envOf("AI_STALL_MS")) || 75_000;
+  const stallMs = Number(envOf("AI_STALL_MS")) || 120_000;
   const baseUrl = envOf("GEMINI_BASE_URL") || "https://generativelanguage.googleapis.com";
   // Optional: limit "thinking" (a big part of the wait on thinking-capable models). Example: GEMINI_THINKING_BUDGET=0
-  const thinking = envOf("GEMINI_THINKING_BUDGET");
+  const thinking = envOf("GEMINI_THINKING_BUDGET") || DEFAULT_THINKING_BUDGET;
 
   const remaining = opts.deadline ? opts.deadline - Date.now() : Infinity;
   const started = Date.now();
@@ -121,7 +123,7 @@ async function generateOnce(prompt: string, opts: GenerateOptions, all: AiAttemp
   try {
     armStall();
     const generationConfig: Record<string, unknown> = { maxOutputTokens: maxTokens };
-    if (thinking !== "" && Number.isFinite(Number(thinking))) generationConfig.thinkingConfig = { thinkingBudget: Number(thinking) };
+    if (thinking !== "" && Number.isFinite(Number(thinking))) generationConfig.thinkingConfig = { thinkingBudget: Number(thinking), ...(Number(thinking) !== 0 ? { includeThoughts: true } : {}) }; // thought summaries keep the stream alive during long thinking
 
     const res = await fetch(`${baseUrl}/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`, {
       method: "POST",

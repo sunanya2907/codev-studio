@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { adminGuard, pageParams } from "@/lib/admin";
 import { isTier } from "@/lib/admin-actions";
+import { verificationEnabled } from "@/lib/email-verify";
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +48,8 @@ export async function GET(req: Request) {
   const buildMap = new Map(builds.map((b) => [b.userId, b._count._all]));
   return NextResponse.json({
     total, page, size,
+    // false when EMAIL_SERVER / EMAIL_FROM are not set: nobody has to verify, so "unverified" means nothing
+    verificationOn: verificationEnabled(),
     users: users.map((u) => ({ ...u, builds: buildMap.get(u.id) ?? 0, verified: !!u.emailVerified, emailVerified: undefined })),
   });
 }

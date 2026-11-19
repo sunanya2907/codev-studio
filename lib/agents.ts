@@ -23,6 +23,18 @@ const FILE_FORMAT = `OUTPUT FORMAT (strict): return every file as
 <complete file contents>
 Start each file with that exact marker line on its own line. No markdown fences, no explanations, nothing before the first marker.`;
 
+
+// Appended to the contract, SRS, frontend, backend and database prompts: the site must be COMPLETE and fully dynamic.
+const COMPLETE_SITE = `
+COMPLETE SITE REQUIREMENT (most important rule): the result must be a FINISHED, production-style website, not a demo. After the owner sets .env (DATABASE_URL, SESSION_SECRET) and runs "npx prisma db push" and "npm run db:seed", EVERY page works with real data from the database. Think through the whole product first (users, roles, every screen, every data flow), then write it. It must include ALL of these, adapted to the idea:
+- Public pages: landing/home ("/") with hero, features, how-it-works, pricing or CTA, footer; plus about/contact and any page the idea needs (for example listings, detail pages, search).
+- Auth pages: /login, /register, /forgot-password and /reset-password (token stored in the database), working logout, and redirect to /login when a protected page is opened without a session.
+- User area: /dashboard (real stats from the database), the main feature pages of the idea (list, create, edit, detail, delete), /profile and /settings (edit name, change password).
+- Admin area when the idea has roles or content to manage: /admin (stats), /admin/users (list, change role, block) and a management page for each main resource. The User entity has role (USER or ADMIN). Admin routes check role === "ADMIN" on the server.
+- Shared: navbar that changes when logged in, footer, loading/empty/error states, a not-found page (app/not-found.tsx) and a clear error message for every failed request.
+- Nothing is hardcoded: lists, counts, charts and profile data all come from the API and database. The first user who registers with the email in process.env.ADMIN_EMAIL becomes ADMIN.
+`;
+
 // Step 1 of Agent 1 (about 15 to 20 seconds): ONLY the three binding sections. Agents 2, 3 and 4 start from this
 // immediately, while the full SRS (srsPrompt) is written at the same time.
 export const contractPrompt = (idea: string, tracking = false, healthcare = false) => `You are Agent 1, a senior business analyst. For this web app idea:
@@ -31,9 +43,9 @@ write ONLY the binding contract of its Software Requirements Specification, as M
 # Contract: <app name>
 ## 5. Data Model  (BINDING CONTRACT. For every entity a table: field | type | constraints. Use camelCase fields and PascalCase entity names. Include id, createdAt, updatedAt and relations. If users must log in, the User entity includes email (unique) and passwordHash.)
 ## 6. API Contract  (BINDING CONTRACT. A table per resource: method | path | auth required | request JSON | success JSON | error cases. Paths under /api/..., consistent names that match section 5.)
-## 7. Pages & UI Flows  (BINDING CONTRACT. For every page: route | purpose | main components | API endpoints it calls. Include a landing/dashboard page at "/".)
+## 7. Pages & UI Flows  (BINDING CONTRACT. For every page: route | purpose | main components | API endpoints it calls. Include EVERY page: landing "/", /login, /register, /forgot-password, /reset-password, /dashboard, /profile, /settings, admin pages and every feature page. The User entity always has email (unique), passwordHash, name, role (USER/ADMIN) and a PasswordReset entity (token, userId, expiresAt). Section 6 always includes /api/auth/register, /api/auth/login, /api/auth/logout, /api/auth/me, /api/auth/forgot-password, /api/auth/reset-password, /api/profile and admin endpoints.)
 
-Rules: be specific and realistic for THIS idea, no placeholders, no filler, no other sections. Keep it under about 1,000 words. Return only the Markdown.${tracking ? SRS_TRACKING_ADDENDUM : ""}${healthcare ? SRS_HEALTH_ADDENDUM(tracking) : ""}`;
+Rules: be specific and realistic for THIS idea, no placeholders, no filler, no other sections. Think carefully and cover every screen and data field. Keep it under about 1,800 words. Return only the Markdown.${COMPLETE_SITE}${tracking ? SRS_TRACKING_ADDENDUM : ""}${healthcare ? SRS_HEALTH_ADDENDUM(tracking) : ""}`;
 
 export const srsPrompt = (idea: string, tracking = false, healthcare = false, contract = "") => `You are Agent 1, a senior business analyst. Write a complete Software Requirements Specification (SRS) in Markdown, in the style of IEEE 830, for this web app idea:
 "${idea}"
@@ -46,13 +58,13 @@ Use exactly these sections, in this order:
 ## 4. Non-Functional Requirements  (performance, security, accessibility, responsiveness)
 ## 5. Data Model  (BINDING CONTRACT. For every entity a table: field | type | constraints. Use camelCase fields and PascalCase entity names. Include id, createdAt, updatedAt and relations. If users must log in, the User entity includes email (unique) and passwordHash.)
 ## 6. API Contract  (BINDING CONTRACT. A table per resource: method | path | auth required | request JSON | success JSON | error cases. Paths under /api/..., consistent names that match section 5.)
-## 7. Pages & UI Flows  (BINDING CONTRACT. For every page: route | purpose | main components | API endpoints it calls. Include a landing/dashboard page at "/".)
+## 7. Pages & UI Flows  (BINDING CONTRACT. For every page: route | purpose | main components | API endpoints it calls. Include EVERY page: landing "/", /login, /register, /forgot-password, /reset-password, /dashboard, /profile, /settings, admin pages and every feature page.)
 ## 8. Out of Scope
 
-Rules: be specific and realistic for THIS idea, no placeholders, no filler. Sections 5, 6 and 7 will be used verbatim by other engineers, so every name must be precise and consistent. Keep the whole document under about 2,500 words. Return only the Markdown.${tracking ? SRS_TRACKING_ADDENDUM : ""}${healthcare ? SRS_HEALTH_ADDENDUM(tracking) : ""}${contract ? `\n\nSECTIONS 5, 6 AND 7 ARE ALREADY FIXED: the frontend, API and database are being built from them right now. Reproduce the contract below VERBATIM as sections 5, 6 and 7 (do not rename or change anything in it), and write sections 1 to 4 and 8 so that they agree with it.\n\nCONTRACT:\n${contract}` : ""}`;
+Rules: be specific and realistic for THIS idea, no placeholders, no filler. Sections 5, 6 and 7 will be used verbatim by other engineers, so every name must be precise and consistent. Keep the whole document under about 3,500 words. Return only the Markdown.${COMPLETE_SITE}${tracking ? SRS_TRACKING_ADDENDUM : ""}${healthcare ? SRS_HEALTH_ADDENDUM(tracking) : ""}${contract ? `\n\nSECTIONS 5, 6 AND 7 ARE ALREADY FIXED: the frontend, API and database are being built from them right now. Reproduce the contract below VERBATIM as sections 5, 6 and 7 (do not rename or change anything in it), and write sections 1 to 4 and 8 so that they agree with it.\n\nCONTRACT:\n${contract}` : ""}`;
 
 // compact = a smaller answer that fits a short time budget (Live Preview builds, or Vercel Hobby's 300 second limit).
-const FRONTEND_SIZE_FULL = `Aim for roughly 6 to 12 files, complete and working, not stubs.`;
+const FRONTEND_SIZE_FULL = `Build EVERY page in SRS section 7 (typically 15 to 30 files): landing, login, register, forgot/reset password, dashboard, feature pages, profile, settings, admin pages, not-found, plus shared components. Complete and working, never stubs, never "coming soon".`;
 const FRONTEND_SIZE_COMPACT = `Aim for 5 to 7 files in total, complete and working, not stubs: app/page.tsx, at most 3 other pages, 2 to 3 small shared components, lib/types.ts and lib/api.ts. If SRS section 7 lists more pages, fold the secondary ones into tabs or sections of the pages you build, so every feature stays reachable. Keep every file under about 150 lines: dense Tailwind classes, no long comments, no repeated markup (map over arrays), no decorative extras. A SHORT answer is required: it must finish quickly.`;
 export const frontendPrompt = (srs: string, tracking = false, healthcare = false, compact = false) => `You are Agent 2, a senior frontend engineer. Using ONLY the SRS below, build the WHOLE frontend as a multi-page Next.js 15 App Router + TypeScript + Tailwind CSS app.
 
@@ -69,9 +81,11 @@ Rules:
 - Allowed imports ONLY: react, next/link, next/navigation, lucide-react, and your own files via "@/..." (for example "@/components/Navbar"). No other packages.
 - Modern, responsive dark UI with Tailwind classes, real labels and realistic copy. It MUST work on every device: design mobile-first (works from 320px phones to wide desktops using sm:/md:/lg: classes), no horizontal scrolling, wrapping/stacking layouts, tap targets at least 44px, inputs with text-base (16px) so phones do not zoom, 100dvh instead of 100vh for full-screen areas, and both touch and mouse/keyboard input. Wrap every localStorage/sessionStorage access in try/catch (it can be blocked) and never let a storage error crash the page. Include loading, empty and error states and working forms with validation.
 - Navigate between pages with next/link and useRouter from next/navigation.
-- The backend may not be running when this is previewed: wrap every fetch in try/catch and, on failure, fall back to realistic in-memory demo data so every page is usable and interactive. Keep the real API calls in lib/api.ts.
+- Real data first: every page loads and saves through the real API in lib/api.ts (credentials: "include"), shows the server's error messages, and uses the logged-in user from /api/auth/me. Only when the request itself fails because no server is reachable (Live Preview) may you fall back to realistic in-memory demo data; never hardcode data that the API returns.
+- Protected pages call /api/auth/me and redirect to /login when it returns 401; admin pages redirect non-admins to /dashboard. Login and register forms validate, show errors, then go to /dashboard.
 - The code must compile without TypeScript or JSX errors.
 
+${COMPLETE_SITE}
 ${FILE_FORMAT}${tracking ? FRONTEND_TRACKING_ADDENDUM : ""}${healthcare ? FRONTEND_HEALTH_ADDENDUM(tracking) : ""}
 
 SRS:
@@ -82,7 +96,7 @@ export const backendPrompt = (srs: string, tracking = false, healthcare = false)
 Deliver:
 - app/api/<resource>/route.ts (GET list and POST create) and app/api/<resource>/[id]/route.ts (GET one, PATCH, DELETE) for every resource in SRS section 6, with EXACTLY the paths, methods, request and response JSON from the contract.
 - lib/validators.ts : zod schemas for every request body.
-- If the SRS needs login: app/api/auth/register/route.ts, app/api/auth/login/route.ts, app/api/auth/logout/route.ts and lib/session.ts. Use the "jose" package for a signed JWT stored in an httpOnly, sameSite=lax cookie (secret from process.env.SESSION_SECRET) and "bcryptjs" for password hashing. lib/session.ts exports getCurrentUser(req: Request): Promise<{ id: string; email: string } | null>.
+- Auth is ALWAYS included: app/api/auth/register/route.ts, login, logout, me (GET current user), forgot-password (creates a PasswordReset token and logs the reset link to the server console when no email provider is configured), reset-password, app/api/profile/route.ts (GET, PATCH name, change password) and lib/session.ts. Add requireAdmin(req) in lib/session.ts and admin routes under app/api/admin/**. Use the "jose" package for a signed JWT stored in an httpOnly, sameSite=lax cookie (secret from process.env.SESSION_SECRET) and "bcryptjs" for password hashing. lib/session.ts exports getCurrentUser(req: Request): Promise<{ id: string; email: string } | null>.
 
 Rules:
 - Import Prisma ONLY as: import { db } from "@/lib/db";  (it exports a ready PrismaClient called db; do not create lib/db.ts).
@@ -93,6 +107,9 @@ Rules:
 - Never expose passwordHash. Wrap handlers in try/catch. Use the Next.js 15 signature for dynamic routes: { params }: { params: Promise<{ id: string }> } and await params.
 - The code must compile without TypeScript errors.
 
+- Every route returns real database data (no mock responses). On register, if the email equals process.env.ADMIN_EMAIL set role "ADMIN". Use SESSION_SECRET from process.env and throw a clear error if it is missing.
+
+${COMPLETE_SITE}
 ${FILE_FORMAT}${tracking ? BACKEND_TRACKING_ADDENDUM : ""}${healthcare ? BACKEND_HEALTH_ADDENDUM(tracking) : ""}
 
 SRS:
@@ -105,6 +122,7 @@ Rules:
 - Model and field names EXACTLY as in the SRS (the backend code uses them).
 - Every model: id String @id @default(cuid()), createdAt DateTime @default(now()), updatedAt DateTime @updatedAt (unless the SRS says otherwise).
 - Proper relations with onDelete behaviour, @@index on foreign keys and common filters, @unique where the SRS requires it, and enums for fixed value sets.
+- Always include User (email unique, passwordHash, name, role enum USER/ADMIN default USER, blockedAt optional) and PasswordReset (token unique, userId, expiresAt, usedAt) even if the SRS data model is short.
 - Return ONLY the schema code, no fences, no explanation.${tracking ? DATABASE_TRACKING_ADDENDUM : ""}${healthcare ? DATABASE_HEALTH_ADDENDUM : ""}
 
 SRS:
