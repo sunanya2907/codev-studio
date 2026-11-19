@@ -325,7 +325,7 @@ export default function Landing({ builds }: { builds: number | null }) {
         </Reveal>
         <div className="mt-10 grid gap-5 md:grid-cols-3">
           {[
-            { n: "01", icon: Sparkles, t: "Describe it", d: "Type or say what you want. One build costs one token." },
+            { n: "01", icon: Sparkles, t: "Describe it", d: "Type or say what you want. Builds are paid with tokens." },
             { n: "02", icon: Layers, t: "Watch it build", d: "See each agent start and finish in real time, with a live preview of your app." },
             { n: "03", icon: Globe, t: "Use the result", d: "Paid plans get the full code, a QA report, pseudocode &amp; flowcharts and a runnable ZIP. Find a domain from inside the editor." },
           ].map((s, i) => {

@@ -15,6 +15,8 @@ import {
   TIER_TOKENS,
   CUSTOMIZE_COST,
   ADVANCED_BUILD_COST,
+  BUILD_COST,
+  CHAT_COST,
   STANDARD_PRICE_LABEL,
   PRO_PRICE_LABEL,
   FREE_TRIAL_BUILDS,
@@ -30,6 +32,7 @@ import { PLAN_DETAILS } from "@/lib/plan-details";
 import BuildProgress, { IDLE_STATUSES, type AgentStatuses } from "@/components/BuildProgress";
 import VoiceBuilder, { type ApplyResult } from "@/components/VoiceBuilder";
 import FlowView from "@/components/FlowView";
+import ProjectChat from "@/components/ProjectChat";
 import BuildQuestions, { type BuildQuestion } from "@/components/BuildQuestions";
 import type { PaymentProvider } from "@/lib/plans";
 import {
@@ -547,7 +550,7 @@ export default function EditorClient({
     qa: string;
     flow: string;
   }>({
-    spec: `# Software Requirements Specification\n## Project: Ready to Orchestrate\n\n### Tech Stack\n- Frontend: Next.js 15 + Tailwind CSS\n- Backend: Next.js App Router API\n- Database: PostgreSQL + Prisma ORM\n- Auth: NextAuth.js\n\nDescribe your website idea on the left and click "Build App (1 Token)" to orchestrate your project.`,
+    spec: `# Software Requirements Specification\n## Project: Ready to Orchestrate\n\n### Tech Stack\n- Frontend: Next.js 15 + Tailwind CSS\n- Backend: Next.js App Router API\n- Database: PostgreSQL + Prisma ORM\n- Auth: NextAuth.js\n\nDescribe your website idea on the left and click "Build App (${BUILD_COST} Tokens)" to orchestrate your project.`,
     frontend: `export default function GeneratedApp() {\n  return (\n    <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-8">\n      <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl text-center">\n        <span className="px-3 py-1 text-xs font-semibold bg-violet-500/20 text-violet-300 rounded-full">Live Preview Ready</span>\n        <h1 className="text-2xl font-bold mt-4">Build_Core Dynamic App</h1>\n        <p className="text-slate-400 text-sm mt-2">Enter an app idea on the left and click Build to render your live interactive UI here.</p>\n      </div>\n    </div>\n  );\n}`,
     backend: `import { NextResponse } from "next/server";\n\nexport async function GET() {\n  return NextResponse.json({ status: "ok", message: "Agent 3 Backend API Ready" });\n}`,
     database: `model Item {\n  id        String   @id @default(cuid())\n  title     String\n  completed Boolean  @default(false)\n  createdAt DateTime @default(now())\n}`,
@@ -842,14 +845,14 @@ export default function EditorClient({
   // Step 1: ask 3 questions about the idea (free), then build with the answers.
   const [buildQuestions, setBuildQuestions] = useState<BuildQuestion[] | null>(null);
   const [isAsking, setIsAsking] = useState(false);
-  const [advancedMode, setAdvancedMode] = useState(false); // advanced build: open website questions, 3 tokens
+  const [advancedMode, setAdvancedMode] = useState(false); // advanced build: open website questions, ADVANCED_BUILD_COST tokens
 
   const handleBuildApp = async (advanced = false) => {
     if (!prompt.trim() || isAsking || !billingReady) return;
 
-    if (tokenBalance < (advanced ? ADVANCED_BUILD_COST : 1)) {
+    if (tokenBalance < (advanced ? ADVANCED_BUILD_COST : BUILD_COST)) {
       if (advanced && tokenBalance > 0) {
-        alert(`An advanced build needs ${ADVANCED_BUILD_COST} tokens and you have ${tokenBalance}. Buy more tokens, or use the normal build (1 token).`);
+        alert(`An advanced build needs ${ADVANCED_BUILD_COST} tokens and you have ${tokenBalance}. Buy more tokens, or use the normal build (${BUILD_COST} tokens).`);
       }
       setShowPricingModal(true);
       return;
@@ -983,7 +986,7 @@ export default function EditorClient({
       if (typeof data.tokenBalance === "number") {
         setTokenBalance(data.tokenBalance);
       } else {
-        setTokenBalance((prev) => Math.max(0, prev - (advanced ? ADVANCED_BUILD_COST : 1)));
+        setTokenBalance((prev) => Math.max(0, prev - (advanced ? ADVANCED_BUILD_COST : BUILD_COST)));
       }
 
       if (data.tier) {
@@ -1520,7 +1523,7 @@ export default function EditorClient({
       <section
         className={`w-full ${
           panelMode === "write" ? "lg:w-[30rem]" : panelMode === "preview" ? "lg:w-64" : "lg:w-80"
-        } lg:transition-[width] lg:duration-300 bg-[#0E1424] border-b lg:border-b-0 lg:border-r border-slate-800/80 flex flex-col justify-between p-4 shrink-0 lg:overflow-y-auto`}
+        } lg:transition-[width] lg:duration-300 bg-[#0E1424] border-b lg:border-b-0 lg:border-r border-slate-800/80 flex flex-col justify-start p-4 shrink-0 lg:overflow-y-auto`}
       >
         <div className="space-y-4">
           <div>
@@ -1567,8 +1570,8 @@ export default function EditorClient({
                   ? "Preparing questions..."
                   : isGenerating
                   ? "Orchestrating Agents..."
-                  : tokenBalance > 0
-                  ? "Build App (1 Token)"
+                  : tokenBalance >= BUILD_COST
+                  ? `Build App (${BUILD_COST} Tokens)`
                   : `Top Up Tokens (${TOKEN_PRICE_LABEL})`}
               </button>
 
@@ -1608,10 +1611,29 @@ export default function EditorClient({
             >
               <Sparkles className="w-3.5 h-3.5 shrink-0 text-violet-300" />
               <span className="truncate">Advanced Build</span>
-              <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-violet-500/25 text-[10px] text-violet-100">3 Tokens</span>
+              <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-violet-500/25 text-[10px] text-violet-100">{ADVANCED_BUILD_COST} Tokens</span>
             </button>
           </div>
         </div>
+
+        {/* Project chat: opens once a website has been built (or an old build is opened) */}
+        {currentHistoryId && !isBuilding && (
+          <div className="mt-4 flex flex-col flex-1 min-h-0 border-t border-slate-800/80 pt-3">
+            <ProjectChat
+              historyId={currentHistoryId}
+              onBlocked={() => setShowPricingModal(true)}
+              onApplied={(r) => {
+                setBuffers((p) => ({
+                  ...p,
+                  frontend: r.changed.length ? r.frontend : p.frontend,
+                  backend: r.changed.length ? r.backend : p.backend,
+                  database: r.changed.length ? r.database : p.database,
+                }));
+                if (typeof r.tokenBalance === "number") setTokenBalance(r.tokenBalance);
+              }}
+            />
+          </div>
+        )}
       </section>
 
       {/* 3. RIGHT MAIN WORKSPACE: TOP TABS + SINGLE AGENT STAGE / UNLOCK + BOTTOM BAR */}

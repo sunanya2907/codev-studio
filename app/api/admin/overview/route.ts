@@ -36,7 +36,7 @@ export async function GET() {
     db.generationHistory.count({ where: { createdAt: { gte: d7 } } }),
     db.generationHistory.groupBy({ by: ["status"], _count: { _all: true } }),
     db.generationHistory.aggregate({ where: { createdAt: { gte: d7 }, status: { not: "FAILED" } }, _sum: { cost: true } }),
-    db.userActivity.aggregate({ where: { createdAt: { gte: d7 }, kind: "CUSTOMIZE" }, _sum: { tokens: true } }),
+    db.userActivity.aggregate({ where: { createdAt: { gte: d7 }, kind: { in: ["CUSTOMIZE", "CHAT"] } }, _sum: { tokens: true } }),
     db.userActivity.groupBy({ by: ["userId"], where: { createdAt: { gte: d1 } } }),
     db.loginEvent.groupBy({ by: ["userId"], where: { type: "LOGIN", createdAt: { gte: d1 }, userId: { not: null } } }),
     db.loginEvent.count({ where: { type: "LOGIN", createdAt: { gte: d1 } } }),

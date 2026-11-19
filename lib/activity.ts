@@ -146,7 +146,8 @@ export type ActivityKind =
   | "DOMAIN_SEARCH"
   | "VOICE"
   | "TESTER_REDEEM"
-  | "REQUEST";
+  | "REQUEST"
+  | "CHAT";
 
 export async function logActivity(userId: string | null | undefined, kind: ActivityKind, detail?: string | null, tokens = 0) {
   if (!userId) return;

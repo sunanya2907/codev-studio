@@ -172,7 +172,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // CASE 2: Full app build (costs 1 token, or 3 for an advanced build). Streams live progress, and is stored in the
+    // CASE 2: Full app build (costs BUILD_COST tokens, or ADVANCED_BUILD_COST for an advanced build). Streams live progress, and is stored in the
     // database from the first second, so closing the tab can never lose a build or a token.
     if (!prompt) {
       return NextResponse.json({ error: "Please describe the app you want to build." }, { status: 400 });

@@ -6,7 +6,7 @@ import { Badge, Empty, ErrorBox, PageHeader, Pager, Panel, Skeleton, ago, fmt, i
 type Row = { id: string; userId: string; email: string; kind: string; detail: string | null; tokens: number; ip: string | null; country: string | null; city: string | null; createdAt: string };
 
 const KIND_LABEL: Record<string, string> = {
-  BUILD: "Builds", CUSTOMIZE: "Edits", QUESTIONS: "Question prompts", ENHANCE: "Enhance prompt",
+  BUILD: "Builds", CUSTOMIZE: "Edits", CHAT: "Project chat", QUESTIONS: "Question prompts", ENHANCE: "Enhance prompt",
   DOMAIN_SEARCH: "Domain searches", VOICE: "Voice", TESTER_REDEEM: "Tester links", REQUEST: "Requests",
 };
 

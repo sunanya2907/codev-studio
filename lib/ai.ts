@@ -45,6 +45,8 @@ export type GenerateOptions = {
   attemptTimeoutMs?: number;
   /** Cap on the answer length (default 32768). Small jobs such as a review can use less. */
   maxOutputTokens?: number;
+  /** Images / PDFs sent along with the prompt (base64, no data: prefix). */
+  attachments?: { mimeType: string; data: string }[];
   /** Who / what the call is for: only used for the admin usage statistics. */
   meta?: { userId?: string | null; purpose?: string };
 };
@@ -128,7 +130,7 @@ async function generateOnce(prompt: string, opts: GenerateOptions, all: AiAttemp
     const res = await fetch(`${baseUrl}/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": key },
-      body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig }),
+      body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }, ...(opts.attachments ?? []).map((f) => ({ inlineData: { mimeType: f.mimeType, data: f.data } }))] }], generationConfig }),
       signal: controller.signal,
     });
     if (!res.ok || !res.body) {

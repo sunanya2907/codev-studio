@@ -19,10 +19,13 @@ export const TIER_TOKENS: Record<Tier, number> = {
 };
 
 /** A full 5-agent build. */
-export const BUILD_COST = 1;
+export const BUILD_COST = 5;
 
 /** Advanced build: open website questions (pages, admin/user roles, ...) and a fuller app. */
-export const ADVANCED_BUILD_COST = 3;
+export const ADVANCED_BUILD_COST = 7;
+
+/** One message in the project chat (review or change the whole website). Not shown in the UI on purpose. */
+export const CHAT_COST = 2;
 
 /** Re-running a single agent with a custom instruction (one AI call). */
 export const CUSTOMIZE_COST = 1;
