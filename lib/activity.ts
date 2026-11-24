@@ -147,7 +147,8 @@ export type ActivityKind =
   | "VOICE"
   | "TESTER_REDEEM"
   | "REQUEST"
-  | "CHAT";
+  | "CHAT"
+  | "GITHUB_PUSH";
 
 export async function logActivity(userId: string | null | undefined, kind: ActivityKind, detail?: string | null, tokens = 0) {
   if (!userId) return;

@@ -32,6 +32,7 @@ import BuildProgress, { IDLE_STATUSES, type AgentStatuses } from "@/components/B
 import VoiceBuilder, { type ApplyResult } from "@/components/VoiceBuilder";
 import FlowView from "@/components/FlowView";
 import AttachButton, { AttachChips } from "@/components/AttachButton";
+import GithubPush from "@/components/GithubPush";
 import { toPayload, type Attached } from "@/lib/attachments-client";
 import BuildQuestions, { type BuildQuestion } from "@/components/BuildQuestions";
 import type { PaymentProvider } from "@/lib/plans";
@@ -46,6 +47,7 @@ import {
   ChevronRight,
   Send,
   Download,
+  Github,
   Code2,
   Eye,
   CheckCircle2,
@@ -325,6 +327,7 @@ export default function EditorClient({
     }
   };
   const [showPricingModal, setShowPricingModal] = useState(false);
+  const [showGithub, setShowGithub] = useState(false);
   // Agent list in the sidebar: open/close, remembered across refreshes
   const PIPELINE_OPEN_KEY = "buildcore:pipelineOpen";
   const [pipelineOpen, setPipelineOpenState] = useState(true);
@@ -1133,6 +1136,33 @@ export default function EditorClient({
     }
   };
 
+  // Every file of the project (same set as Export ZIP): used by "Push to GitHub".
+  const collectProjectFiles = () => {
+    const out: { path: string; content: string }[] = [];
+    const appName =
+      (buffers.spec.match(/^#\s+(?:Software Requirements Specification:?\s*)?(.+)$/m)?.[1] || "").trim() || "My App";
+    for (const f of scaffoldFiles(appName)) out.push(f);
+    out.push({ path: "SRS.md", content: buffers.spec }, { path: "QA_REPORT.md", content: buffers.qa }, { path: "PSEUDOCODE_AND_FLOWCHART.md", content: buffers.flow });
+    for (const blob of [buffers.frontend, buffers.backend]) {
+      for (const f of parseFiles(blob, blob === buffers.frontend ? "app/page.tsx" : "app/api/route.ts")) {
+        const path = cleanPath(f.path);
+        if (path) out.push({ path, content: f.content });
+      }
+    }
+    out.push({ path: "prisma/schema.prisma", content: buffers.database });
+    // later files win over scaffold files with the same path
+    const byPath = new Map(out.map((f) => [f.path, f]));
+    return { appName, files: [...byPath.values()] };
+  };
+
+  const openGithub = () => {
+    if (tier === "FREE") {
+      setShowPricingModal(true);
+      return;
+    }
+    setShowGithub(true);
+  };
+
   // Export ZIP (Locked on Free Plan)
   const handleExportZip = async () => {
     if (tier === "FREE") {
@@ -1891,25 +1921,16 @@ export default function EditorClient({
       </main>
 
       {domainOpen && (
-        <div
-          className="fixed inset-0 z-[70] flex items-center justify-center p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Make your website online"
-        >
-          <button
-            aria-label="Close"
-            onClick={() => setDomainOpen(false)}
-            className="absolute inset-0 bg-black/70 backdrop-blur-sm cursor-default"
-          />
-          <div className="relative w-full max-w-2xl max-h-[88vh] flex flex-col rounded-2xl bg-[#0D1322] border border-slate-800 shadow-2xl">
-            <div className="flex items-start justify-between gap-3 px-5 pt-4 pb-3 border-b border-slate-800 shrink-0">
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Host your website">
+          <button aria-label="Close" onClick={() => setDomainOpen(false)} className="absolute inset-0 bg-black/70 backdrop-blur-sm cursor-default" />
+          <div className="relative w-full max-w-md flex flex-col rounded-2xl bg-[#0D1322] border border-slate-800 shadow-2xl">
+            <div className="flex items-start justify-between gap-3 px-5 pt-4 pb-3 border-b border-slate-800">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <Globe className="w-4 h-4 text-cyan-300 shrink-0" />
-                  <h2 className="text-sm font-bold text-white">Make your website online</h2>
+                  <h2 className="text-sm font-bold text-white">Host your website</h2>
                 </div>
-                <p className="mt-1 text-[11px] text-slate-400">Follow these steps in order. Your progress is saved here.</p>
+                <p className="mt-1 text-[11px] text-slate-400">Put your code on GitHub, then deploy it on any host.</p>
               </div>
               <button
                 onClick={() => setDomainOpen(false)}
@@ -1919,127 +1940,26 @@ export default function EditorClient({
                 <X className="w-4 h-4" />
               </button>
             </div>
-
-            <div className="px-5 py-2.5 border-b border-slate-800 flex items-center gap-3 shrink-0">
-              <div className="flex-1 h-1.5 rounded-full bg-slate-800 overflow-hidden">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-cyan-400 transition-all duration-300"
-                  style={{ width: `${(doneCount / DOMAIN_STEPS.length) * 100}%` }}
-                />
+            <div className="p-5">
+              <div className="rounded-xl border border-slate-700 bg-slate-800/40 p-4 flex items-center gap-3">
+                <div className="w-10 h-10 shrink-0 rounded-lg bg-slate-900 border border-slate-700 flex items-center justify-center">
+                  <Github className="w-5 h-5 text-white" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold text-white">Push your code to GitHub</p>
+                  <p className="text-[11px] text-slate-400 leading-snug">Then deploy it on Vercel, Render, Hostinger, GoDaddy or any host.</p>
+                </div>
               </div>
-              <span className="text-[11px] text-slate-400 shrink-0">
-                {doneCount}/{DOMAIN_STEPS.length} completed
-              </span>
-            </div>
-
-            <div className="overflow-y-auto">
-              {domainView === "steps" || !activeStep ? (
-                <>
-                  <ol className="px-5 py-4 space-y-4">
-                    {DOMAIN_STEPS.map((step, i) => {
-                      const done = doneSteps.includes(step.title);
-                      const picked = step.options.find((o) => o.id === selectedOptions[step.title]);
-                      return (
-                        <li key={step.title} className="flex items-start gap-3">
-                          <span
-                            className={`mt-0.5 w-5 h-5 shrink-0 rounded-full border text-[10px] font-bold flex items-center justify-center ${
-                              done
-                                ? "bg-emerald-500 border-emerald-500 text-slate-950"
-                                : "bg-cyan-500/15 border-cyan-500/30 text-cyan-300"
-                            }`}
-                          >
-                            {done ? <Check className="w-3 h-3" /> : i + 1}
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-xs font-semibold text-white">{step.title}</p>
-                            <p className="mt-0.5 text-[11px] leading-relaxed text-slate-400">{step.text}</p>
-                            {picked && (
-                              <p className="mt-1 text-[11px] font-semibold text-cyan-300">Selected: {picked.name}</p>
-                            )}
-                          </div>
-                          <button
-                            onClick={() => setDomainView(i)}
-                            className={`shrink-0 self-start flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold transition ${
-                              done
-                                ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25"
-                                : "border-cyan-500/40 bg-cyan-500/10 text-cyan-200 hover:bg-cyan-500/20"
-                            }`}
-                          >
-                            <span
-                              className={`w-3 h-3 rounded-full border ${
-                                done ? "border-emerald-400 bg-emerald-400" : "border-cyan-300/70"
-                              }`}
-                            />
-                            {done ? "Completed" : "Complete step →"}
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ol>
-
-                  <section className="px-5 pb-5 pt-4 border-t border-slate-800">
-                    <h3 className="text-xs font-bold text-white">Do it all in one place</h3>
-                    <p className="mt-1 mb-3 text-[11px] leading-relaxed text-slate-400">
-                      These providers cover most of the steps above (domain, hosting, DNS, HTTPS and deploy) in a single
-                      account. A database and the final testing may still need an add-on or another tool.
-                    </p>
-                    <ul className="grid gap-2 sm:grid-cols-2">
-                      {ALL_IN_ONE.map((o, i) =>
-                        optionCard(o, i, selectedOptions["all-in-one"] === o.id, () =>
-                          setSelectedOptions((cur) => ({ ...cur, "all-in-one": o.id }))
-                        )
-                      )}
-                    </ul>
-                  </section>
-                </>
-              ) : (
-                <>
-                  <div className="px-5 pt-4">
-                    <button
-                      onClick={() => setDomainView("steps")}
-                      className="mb-2 flex items-center gap-1 text-[11px] font-semibold text-slate-400 hover:text-white transition"
-                    >
-                      <ChevronLeft className="w-3 h-3" /> Back to steps
-                    </button>
-                    <p className="text-xs font-bold text-white">
-                      Step {domainView + 1}: {activeStep.title}
-                    </p>
-                    <p className="mt-1 text-[11px] text-slate-400">Choose the one you prefer</p>
-                  </div>
-
-                  <ul className="px-5 py-3 grid gap-2 sm:grid-cols-2">
-                    {activeStep.options.map((o, i) =>
-                      optionCard(o, i, selectedOptions[activeStep.title] === o.id, () =>
-                        setSelectedOptions((cur) => ({ ...cur, [activeStep.title]: o.id }))
-                      )
-                    )}
-                  </ul>
-
-                  <div className="px-5 pb-5 flex flex-wrap items-center gap-3">
-                    {doneSteps.includes(activeStep.title) ? (
-                      <button
-                        onClick={() => setStepDone(activeStep.title, false)}
-                        className="px-4 py-2 rounded-lg border border-slate-700 text-[11px] font-bold text-slate-300 hover:bg-slate-800/70 transition"
-                      >
-                        Mark as not done
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => {
-                          setStepDone(activeStep.title, true);
-                          setDomainView("steps");
-                        }}
-                        className="px-4 py-2 rounded-lg bg-emerald-500 text-[11px] font-bold text-slate-950 hover:brightness-110 transition"
-                      >
-                        I&apos;ve completed this step
-                      </button>
-                    )}
-                    <span className="text-[10px] text-slate-500">
-                      Selecting opens the website in a new tab. Come back and tap the green button when you are done.
-                    </span>
-                  </div>
-                </>
-              )}
+              <button
+                onClick={() => {
+                  setDomainOpen(false);
+                  openGithub();
+                }}
+                className="mt-3 w-full py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-sm font-bold text-white transition flex items-center justify-center gap-2"
+              >
+                <Github className="w-4 h-4" />
+                Push to GitHub
+              </button>
             </div>
           </div>
         </div>
@@ -2081,6 +2001,18 @@ export default function EditorClient({
       />
 
       {/* 4. FULL INTERACTIVE PRICING & EXTRA TOKEN MODAL */}
+
+      {showGithub && (() => {
+        const p = collectProjectFiles();
+        return (
+          <GithubPush
+            getFiles={() => collectProjectFiles().files}
+            defaultName={p.appName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "my-app"}
+            onClose={() => setShowGithub(false)}
+            onLocked={() => setShowPricingModal(true)}
+          />
+        );
+      })()}
 
       {showPricingModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
