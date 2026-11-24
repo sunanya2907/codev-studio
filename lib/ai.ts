@@ -7,9 +7,10 @@ import { logAiCall } from "@/lib/activity"; // every call is counted for the adm
 export type ProviderId = "gemini";
 
 const DEFAULT_MODEL = "gemini-3.8-flash";
-const DEFAULT_MAX_TOKENS = 65536;
-// Maximum "thinking": the model plans the whole site before writing code. Override with GEMINI_THINKING_BUDGET (0 = off, -1 = dynamic).
-const DEFAULT_THINKING_BUDGET = "24576";
+const DEFAULT_MAX_TOKENS = 32768;
+// Managed thinking: a moderate default so builds finish. Each agent passes its own budget (see THINK in the orchestrate route).
+// GEMINI_THINKING_BUDGET overrides every budget (0 = off, -1 = dynamic). 24576 is the maximum but made builds time out.
+const DEFAULT_THINKING_BUDGET = "4096";
 
 export class AiNotConfiguredError extends Error {
   constructor() {
@@ -43,6 +44,8 @@ export type GenerateOptions = {
   deadline?: number;
   /** Max time for the request. Default 240s (AI_ATTEMPT_TIMEOUT_MS). */
   attemptTimeoutMs?: number;
+  /** Thinking tokens for this call (overrides GEMINI_THINKING_BUDGET). Small edits use less. */
+  thinkingBudget?: number;
   /** Cap on the answer length (default 32768). Small jobs such as a review can use less. */
   maxOutputTokens?: number;
   /** Images / PDFs sent along with the prompt (base64, no data: prefix). */
@@ -88,13 +91,13 @@ async function generateOnce(prompt: string, opts: GenerateOptions, all: AiAttemp
 
   const maxTokens = opts.maxOutputTokens || Number(envOf("GEMINI_MAX_OUTPUT_TOKENS")) || DEFAULT_MAX_TOKENS;
   const attemptCap =
-    opts.attemptTimeoutMs ?? (Number(envOf("AI_ATTEMPT_TIMEOUT_MS")) || 240_000);
+    opts.attemptTimeoutMs ?? (Number(envOf("AI_ATTEMPT_TIMEOUT_MS")) || (process.env.VERCEL ? 240_000 : 480_000));
   // If Gemini sends NOTHING for this long the call is treated as stuck, dropped, and retried on the next model.
   // (Before this, one stuck call could use the whole 300 second limit and the build failed.)
-  const stallMs = Number(envOf("AI_STALL_MS")) || 120_000;
+  const stallMs = Number(envOf("AI_STALL_MS")) || 90_000;
   const baseUrl = envOf("GEMINI_BASE_URL") || "https://generativelanguage.googleapis.com";
   // Optional: limit "thinking" (a big part of the wait on thinking-capable models). Example: GEMINI_THINKING_BUDGET=0
-  const thinking = envOf("GEMINI_THINKING_BUDGET") || DEFAULT_THINKING_BUDGET;
+  const thinking = envOf("GEMINI_THINKING_BUDGET") || (opts.thinkingBudget !== undefined ? String(opts.thinkingBudget) : DEFAULT_THINKING_BUDGET);
 
   const remaining = opts.deadline ? opts.deadline - Date.now() : Infinity;
   const started = Date.now();
@@ -125,7 +128,7 @@ async function generateOnce(prompt: string, opts: GenerateOptions, all: AiAttemp
   try {
     armStall();
     const generationConfig: Record<string, unknown> = { maxOutputTokens: maxTokens };
-    if (thinking !== "" && Number.isFinite(Number(thinking))) generationConfig.thinkingConfig = { thinkingBudget: Number(thinking), ...(Number(thinking) !== 0 ? { includeThoughts: true } : {}) }; // thought summaries keep the stream alive during long thinking
+    if (thinking !== "" && Number.isFinite(Number(thinking))) generationConfig.thinkingConfig = { thinkingBudget: Number(thinking) };
 
     const res = await fetch(`${baseUrl}/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`, {
       method: "POST",

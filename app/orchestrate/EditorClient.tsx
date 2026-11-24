@@ -16,7 +16,6 @@ import {
   CUSTOMIZE_COST,
   ADVANCED_BUILD_COST,
   BUILD_COST,
-  CHAT_COST,
   STANDARD_PRICE_LABEL,
   PRO_PRICE_LABEL,
   FREE_TRIAL_BUILDS,
@@ -32,7 +31,8 @@ import { PLAN_DETAILS } from "@/lib/plan-details";
 import BuildProgress, { IDLE_STATUSES, type AgentStatuses } from "@/components/BuildProgress";
 import VoiceBuilder, { type ApplyResult } from "@/components/VoiceBuilder";
 import FlowView from "@/components/FlowView";
-import ProjectChat from "@/components/ProjectChat";
+import AttachButton, { AttachChips } from "@/components/AttachButton";
+import { toPayload, type Attached } from "@/lib/attachments-client";
 import BuildQuestions, { type BuildQuestion } from "@/components/BuildQuestions";
 import type { PaymentProvider } from "@/lib/plans";
 import {
@@ -534,6 +534,7 @@ export default function EditorClient({
   const [showVoice, setShowVoice] = useState(false);
   const [voiceMode, setVoiceMode] = useState<"build" | "edit">("build");
   const [customInstruction, setCustomInstruction] = useState("");
+  const [customFiles, setCustomFiles] = useState<Attached[]>([]); // images / files next to Customize (any agent)
   const [isGenerating, setIsGenerating] = useState(false);
   const [isBuilding, setIsBuilding] = useState(false); // full build only (shows the progress screen)
   const [agentStatus, setAgentStatus] = useState<AgentStatuses>(IDLE_STATUSES);
@@ -1045,6 +1046,7 @@ export default function EditorClient({
           agent: currentAgent.key,
           currentCode: buffers[key],
           instruction: customInstruction,
+          attachments: toPayload(customFiles),
           historyId: currentHistoryId,
         }),
       });
@@ -1068,6 +1070,7 @@ export default function EditorClient({
         setTokenBalance(data.tokenBalance);
       }
       setCustomInstruction("");
+      setCustomFiles([]);
     } catch (e: any) {
       alert(e.message || "Failed to customize");
     } finally {
@@ -1523,7 +1526,7 @@ export default function EditorClient({
       <section
         className={`w-full ${
           panelMode === "write" ? "lg:w-[30rem]" : panelMode === "preview" ? "lg:w-64" : "lg:w-80"
-        } lg:transition-[width] lg:duration-300 bg-[#0E1424] border-b lg:border-b-0 lg:border-r border-slate-800/80 flex flex-col justify-start p-4 shrink-0 lg:overflow-y-auto`}
+        } lg:transition-[width] lg:duration-300 bg-[#0E1424] border-b lg:border-b-0 lg:border-r border-slate-800/80 flex flex-col justify-between p-4 shrink-0 lg:overflow-y-auto`}
       >
         <div className="space-y-4">
           <div>
@@ -1615,25 +1618,6 @@ export default function EditorClient({
             </button>
           </div>
         </div>
-
-        {/* Project chat: opens once a website has been built (or an old build is opened) */}
-        {currentHistoryId && !isBuilding && (
-          <div className="mt-4 flex flex-col flex-1 min-h-0 border-t border-slate-800/80 pt-3">
-            <ProjectChat
-              historyId={currentHistoryId}
-              onBlocked={() => setShowPricingModal(true)}
-              onApplied={(r) => {
-                setBuffers((p) => ({
-                  ...p,
-                  frontend: r.changed.length ? r.frontend : p.frontend,
-                  backend: r.changed.length ? r.backend : p.backend,
-                  database: r.changed.length ? r.database : p.database,
-                }));
-                if (typeof r.tokenBalance === "number") setTokenBalance(r.tokenBalance);
-              }}
-            />
-          </div>
-        )}
       </section>
 
       {/* 3. RIGHT MAIN WORKSPACE: TOP TABS + SINGLE AGENT STAGE / UNLOCK + BOTTOM BAR */}
@@ -1786,7 +1770,7 @@ export default function EditorClient({
                       Unlock the code: {currentAgent.name}{currentAgent.role ? ` (${currentAgent.role})` : ""}
                     </h4>
                     <p className="text-xs text-slate-300 max-w-md mb-6 leading-relaxed">
-                      Your Free Plan includes <strong>{FREE_TRIAL_BUILDS} one-time trial builds</strong> where you can run your app in the <strong>Live Preview</strong>. Viewing, copying, editing and exporting the code needs a paid plan. Upgrade to <strong>Standard ({STANDARD_PRICE_LABEL} / {TIER_TOKENS.STANDARD} Tokens)</strong>, <strong>Pro ({PRO_PRICE_LABEL} / {TIER_TOKENS.PRO} Tokens)</strong>, or <strong>Exclusive</strong> to unlock all 5 agents, the pseudocode & flowchart and the full code!
+                      Your Free Plan includes <strong>{FREE_TRIAL_BUILDS} one-time trial build{FREE_TRIAL_BUILDS === 1 ? "" : "s"}</strong> where you can run your app in the <strong>Live Preview</strong>. Viewing, copying, editing and exporting the code needs a paid plan. Upgrade to <strong>Standard ({STANDARD_PRICE_LABEL} / {TIER_TOKENS.STANDARD} Tokens)</strong>, <strong>Pro ({PRO_PRICE_LABEL} / {TIER_TOKENS.PRO} Tokens)</strong>, or <strong>Exclusive</strong> to unlock all 5 agents, the pseudocode & flowchart and the full code!
                     </p>
                     <div className="flex flex-wrap items-center justify-center gap-3">
                       <button
@@ -1862,7 +1846,10 @@ export default function EditorClient({
             </button>
           </div>
 
-          <div className="flex-1 max-w-2xl flex items-center gap-3">
+          <div className="flex-1 max-w-2xl flex flex-col gap-2">
+            <AttachChips files={customFiles} onRemove={(i) => setCustomFiles((p) => p.filter((_, j) => j !== i))} />
+            <div className="flex items-center gap-3">
+            <AttachButton files={customFiles} onChange={setCustomFiles} disabled={isCurrentAgentLocked || isGenerating} />
             <input
               type="text"
               value={customInstruction}
@@ -1898,6 +1885,7 @@ export default function EditorClient({
             >
               <Mic className="w-3.5 h-3.5" />
             </button>
+            </div>
           </div>
         </footer>
       </main>

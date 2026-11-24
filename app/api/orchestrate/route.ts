@@ -4,10 +4,11 @@ import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { ADVANCED_BUILD_COST, BUILD_COST, CUSTOMIZE_COST, STANDARD_PRICE_LABEL, TOKEN_PRICE_LABEL } from "@/lib/plans";
 import { getBillingState, reserveTokens, refundTokens } from "@/lib/tokens";
-import { normalizeFiles } from "@/lib/files";
+import { normalizeFiles, parseFiles, serializeFiles, type GenFile } from "@/lib/files";
 import { failBuild, reconcileStaleBuilds } from "@/lib/builds";
 import { qaPendingText } from "@/lib/qa-review";
 import { logActivity } from "@/lib/activity";
+import { parseAttachments } from "@/lib/attachments";
 import { validateBackend, validateFrontend, validateSchema, validateSrs } from "@/lib/validate";
 import { mergeContract, validateContract } from "@/lib/contract";
 import { isHealthcareIdea } from "@/lib/healthcare";
@@ -17,6 +18,7 @@ import {
   contractPrompt,
   srsPrompt,
   frontendPrompt,
+  FRONTEND_PARTS,
   backendPrompt,
   databasePrompt,
   customizeHint,
@@ -35,6 +37,10 @@ const MAX_PROMPT_LENGTH = 2000; // idea (max 1000 in the editor) + the answers t
 const MAX_ADVANCED_PROMPT_LENGTH = 6000; // idea + the answers to the advanced website questions
 const MAX_INSTRUCTION_LENGTH = 1000;
 const MAX_CODE_LENGTH = 150000; // multi-file modules are bigger than the old single files
+
+// Managed thinking: how many "thinking" tokens each agent may use. Enough to plan well, small enough that the
+// build finishes inside the time limit (a huge budget made builds time out). GEMINI_THINKING_BUDGET overrides all of them.
+const THINK: Record<string, number> = { spec: 2048, frontend: 4096, backend: 4096, database: 1024 };
 
 const AGENT_KEYS = ["spec", "frontend", "backend", "database", "qa", "flow"] as const;
 type AgentKey = (typeof AGENT_KEYS)[number];
@@ -126,6 +132,9 @@ export async function POST(req: Request) {
         );
       }
 
+      const attached = parseAttachments(body.attachments);
+      if (!attached.ok) return NextResponse.json({ error: attached.error }, { status: 413 });
+
       // Free users can only preview; code (and editing it) is a paid feature
       if (user.tier === "FREE") {
         return NextResponse.json(
@@ -144,8 +153,8 @@ export async function POST(req: Request) {
       if (balanceAfterReserve === null) return outOfTokens(CUSTOMIZE_COST);
 
       try {
-        const customPrompt = `You are a senior full-stack AI agent updating the "${agent}" module.\n${customizeHint(agent)}\n\nCurrent Code/Spec:\n${currentCode}\n\nUser Instruction: ${instruction}\n\nReturn ONLY the updated code or markdown without explanations.`;
-        let updatedCode = await callAI(customPrompt);
+        const customPrompt = `You are a senior full-stack AI agent updating the "${agent}" module.\n${customizeHint(agent)}\n\nCurrent Code/Spec:\n${currentCode}\n\nUser Instruction: ${instruction}${attached.textBlock}\n\nReturn ONLY the updated code or markdown without explanations.`;
+        let updatedCode = await callAI(customPrompt, { attachments: attached.media, thinkingBudget: 2048 });
         await logActivity(session.user.id, "CUSTOMIZE", `[${agent}] ${instruction}`, CUSTOMIZE_COST);
         if (agent === "frontend") updatedCode = normalizeFiles(updatedCode, "app/page.tsx");
         if (agent === "backend") updatedCode = normalizeFiles(updatedCode, "app/api/route.ts");
@@ -246,13 +255,14 @@ export async function POST(req: Request) {
         ): Promise<string> => {
           if (emitStart) event(key, "start");
           const t0 = Date.now();
-          let text = clean(await callAI(basePrompt));
+          let text = clean(await callAI(basePrompt, { thinkingBudget: THINK[key] }));
           let issues = validate(text);
           if (issues.length) {
             event(key, "retry");
             const second = clean(
               await callAI(
-                `${basePrompt}\n\nYOUR PREVIOUS ANSWER HAD THESE PROBLEMS. Fix all of them and return the COMPLETE corrected answer in the required format:\n- ${issues.join("\n- ")}`
+                `${basePrompt}\n\nYOUR PREVIOUS ANSWER HAD THESE PROBLEMS. Fix all of them and return the COMPLETE corrected answer in the required format:\n- ${issues.join("\n- ")}`,
+                { thinkingBudget: 1024 }
               )
             );
             const issues2 = validate(second);
@@ -283,7 +293,7 @@ export async function POST(req: Request) {
           // 60 to 80 seconds for the whole document.
           event("spec", "start");
           const contractBase = contractPrompt(prompt, tracking, healthcare);
-          let contract = await callAI(contractBase);
+          let contract = await callAI(contractBase, { thinkingBudget: THINK.spec });
           let contractIssues = validateContract(contract);
           if (contractIssues.length) {
             event("spec", "retry");
@@ -304,8 +314,52 @@ export async function POST(req: Request) {
           // ~300 seconds are left (always the case on Hobby). Local runs and a Pro plan with a longer limit keep the full size.
           const compactFrontend = isFree || (!!process.env.VERCEL && !process.env.BUILD_FULL_SITE && deadline - Date.now() < 300_000);
           console.log("FRONTEND SIZE", JSON.stringify({ buildId, compact: compactFrontend, secondsLeft: Math.round((deadline - Date.now()) / 1000) }));
-          const frontendRun = () =>
-            runAgent("frontend", frontendPrompt(contract, tracking, healthcare, compactFrontend), (t) => normalizeFiles(t, "app/page.tsx"), validateFrontend);
+          // Full size: three engineers write different pages at the same time (one call for everything timed out).
+          const frontendFullRun = async (): Promise<string> => {
+            event("frontend", "start");
+            const t0 = Date.now();
+            const onePart = async (i: number): Promise<GenFile[]> => {
+              const text = await callAI(frontendPrompt(contract, tracking, healthcare, false, i), { thinkingBudget: THINK.frontend });
+              if (!/^=== FILE: /m.test(text)) throw new Error(`Frontend part ${i + 1} had no files.`);
+              return parseFiles(text, "app/page.tsx");
+            };
+            const settled = await Promise.allSettled(Array.from({ length: FRONTEND_PARTS }, (_, i) => onePart(i)));
+            const parts: GenFile[][] = [];
+            for (let i = 0; i < settled.length; i++) {
+              let res = settled[i];
+              if (res.status === "rejected" && deadline - Date.now() > 90_000) {
+                event("frontend", "retry");
+                res = (await Promise.allSettled([onePart(i)]))[0];
+              }
+              if (res.status === "fulfilled") parts.push(res.value);
+              else if (i === 0) throw res.reason; // the home page and login pages are required
+              else warnings.push(`Agent 2: part ${i + 1} of the frontend (${i === 1 ? "user area and feature pages" : "admin pages"}) could not be written this time. Use Customize UI to add it.`);
+            }
+            const byPath = new Map<string, GenFile>();
+            for (const f of parts.flat()) if (!byPath.has(f.path)) byPath.set(f.path, f); // first writer wins (part 1 owns shared files)
+            const merged = serializeFiles([...byPath.values()]);
+            const issues = validateFrontend(merged);
+            if (issues.some((x) => /^No |far too short/.test(x))) throw new Error(`Agent 2 could not produce a usable result (${issues[0]}). Please try again.`);
+            issues.forEach((x) => warnings.push(`Agent 2: ${x}`));
+            console.log("BUILD TIMING", JSON.stringify({ buildId, agent: "frontend", seconds: Math.round((Date.now() - t0) / 1000), files: byPath.size }));
+            event("frontend", "done");
+            return merged;
+          };
+          const frontendCompactRun = () =>
+            runAgent("frontend", frontendPrompt(contract, tracking, healthcare, true), (t) => normalizeFiles(t, "app/page.tsx"), validateFrontend, false);
+          // Safety net: if the full multi-part frontend fails (for example it runs out of time), fall back to the
+          // compact frontend (home, login, register, admin login, dashboard) so the build still finishes.
+          const frontendRun = async () => {
+            if (compactFrontend) return runAgent("frontend", frontendPrompt(contract, tracking, healthcare, true), (t) => normalizeFiles(t, "app/page.tsx"), validateFrontend);
+            try {
+              return await frontendFullRun();
+            } catch (e) {
+              if (e instanceof AiNotConfiguredError || deadline - Date.now() < 60_000) throw e;
+              console.error("FULL FRONTEND FAILED, using the compact frontend:", e instanceof Error ? e.message : e);
+              warnings.push("Agent 2: the full-size frontend could not be finished in time, so a compact version (home, login, register, admin login, dashboard) was built. Use Customize UI to add more pages.");
+              return frontendCompactRun();
+            }
+          };
 
           // Agent 1, step 2: the full SRS document, written to match the contract. If this step fails, the build still
           // succeeds and the contract is saved as the SRS, because the code does not depend on the rest of the document.

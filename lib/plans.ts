@@ -24,9 +24,6 @@ export const BUILD_COST: number = 5;
 /** Advanced build: open website questions (pages, admin/user roles, ...) and a fuller app. */
 export const ADVANCED_BUILD_COST: number = 7;
 
-/** One message in the project chat (review or change the whole website). Not shown in the UI on purpose. */
-export const CHAT_COST: number = 2;
-
 /** Re-running a single agent with a custom instruction (one AI call). */
 export const CUSTOMIZE_COST: number = 1;
 
