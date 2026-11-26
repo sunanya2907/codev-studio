@@ -537,6 +537,7 @@ export default function EditorClient({
   const [showVoice, setShowVoice] = useState(false);
   const [voiceMode, setVoiceMode] = useState<"build" | "edit">("build");
   const [customInstruction, setCustomInstruction] = useState("");
+  const [customNotice, setCustomNotice] = useState(""); // "also update Backend / Database" hint after a customize
   const [customFiles, setCustomFiles] = useState<Attached[]>([]); // images / files next to Customize (any agent)
   const [isGenerating, setIsGenerating] = useState(false);
   const [isBuilding, setIsBuilding] = useState(false); // full build only (shows the progress screen)
@@ -1024,6 +1025,13 @@ export default function EditorClient({
     }
   };
 
+  // After a change, say which OTHER modules need a matching change (the server reports this), so the app stays in sync.
+  const alsoUpdateNotice = (also: unknown): string => {
+    const names: Record<string, string> = { spec: "SRS", frontend: "UI", backend: "API", database: "DB" };
+    const list = Array.isArray(also) ? (also as string[]).filter((m) => names[m]) : [];
+    return list.length ? `Done. To keep the app working together, also customize: ${list.map((m) => names[m]).join(", ")} (for example: "match the latest changes").` : "";
+  };
+
   // Single-Agent Customize Handler (Bottom Bar)
   const handleCustomizeAgent = async () => {
     if (isCurrentAgentLocked) {
@@ -1031,6 +1039,7 @@ export default function EditorClient({
       return;
     }
     if (!customInstruction.trim()) return;
+    setCustomNotice("");
 
     // Customizing costs tokens (same as the server enforces).
     if (tokenBalance < CUSTOMIZE_COST) {
@@ -1048,6 +1057,7 @@ export default function EditorClient({
           prompt: prompt || "Update current module",
           agent: currentAgent.key,
           currentCode: buffers[key],
+          spec: buffers.spec,
           instruction: customInstruction,
           attachments: toPayload(customFiles),
           historyId: currentHistoryId,
@@ -1074,6 +1084,7 @@ export default function EditorClient({
       }
       setCustomInstruction("");
       setCustomFiles([]);
+      setCustomNotice(alsoUpdateNotice(data.alsoUpdate));
     } catch (e: any) {
       alert(e.message || "Failed to customize");
     } finally {
@@ -1115,6 +1126,7 @@ export default function EditorClient({
           prompt: prompt || "Update current module",
           agent: key,
           currentCode: buffers[key],
+          spec: buffers.spec,
           instruction,
           historyId: currentHistoryId,
         }),
@@ -1128,7 +1140,8 @@ export default function EditorClient({
       setBuffers((prev) => ({ ...prev, [key]: updated }));
       if (typeof data.tokenBalance === "number") setTokenBalance(data.tokenBalance);
       setActiveAgentIndex(AGENTS.findIndex((a) => a.key === key));
-      return { ok: true, message: `Done. I updated the ${agent.role || agent.name}. Check the result, or tell me the next change.` };
+      setCustomNotice(alsoUpdateNotice(data.alsoUpdate));
+      return { ok: true, message: `Done. I updated the ${agent.role || agent.name}. ${alsoUpdateNotice(data.alsoUpdate) ? "Other parts need a matching change too, see the note under the editor. " : ""}Check the result, or tell me the next change.` };
     } catch (e: any) {
       return { ok: false, message: e?.message || "The change failed. Please try again." };
     } finally {
@@ -1877,6 +1890,11 @@ export default function EditorClient({
           </div>
 
           <div className="flex-1 max-w-2xl flex flex-col gap-2">
+            {customNotice && (
+              <p role="status" className="text-[11px] leading-snug text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
+                {customNotice}
+              </p>
+            )}
             <AttachChips files={customFiles} onRemove={(i) => setCustomFiles((p) => p.filter((_, j) => j !== i))} />
             <div className="flex items-center gap-3">
             <AttachButton files={customFiles} onChange={setCustomFiles} disabled={isCurrentAgentLocked || isGenerating} />

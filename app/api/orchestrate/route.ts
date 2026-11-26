@@ -4,13 +4,13 @@ import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { ADVANCED_BUILD_COST, BUILD_COST, CUSTOMIZE_COST, STANDARD_PRICE_LABEL, TOKEN_PRICE_LABEL } from "@/lib/plans";
 import { getBillingState, reserveTokens, refundTokens } from "@/lib/tokens";
-import { normalizeFiles, parseFiles, serializeFiles, type GenFile } from "@/lib/files";
+import { cleanPath, normalizeFiles, parseFiles, serializeFiles, type GenFile } from "@/lib/files";
 import { failBuild, reconcileStaleBuilds } from "@/lib/builds";
 import { qaPendingText } from "@/lib/qa-review";
 import { logActivity } from "@/lib/activity";
 import { parseAttachments } from "@/lib/attachments";
 import { validateBackend, validateFrontend, validateSchema, validateSrs } from "@/lib/validate";
-import { mergeContract, validateContract } from "@/lib/contract";
+import { contractSections, mergeContract, validateContract } from "@/lib/contract";
 import { isHealthcareIdea } from "@/lib/healthcare";
 import { addTrackingBackendFiles, addTrackingFrontendFiles, isTrackingIdea } from "@/lib/tracking";
 import { AiNotConfiguredError, AiUnavailableError, aiConfigured, generateText, type GenerateOptions } from "@/lib/ai";
@@ -21,7 +21,7 @@ import {
   FRONTEND_PARTS,
   backendPrompt,
   databasePrompt,
-  customizeHint,
+  customizePrompt,
 } from "@/lib/agents";
 
 // A full build makes several AI calls (1, then 4 in parallel). That easily exceeds
@@ -35,8 +35,8 @@ export const maxDuration = 300;
 
 const MAX_PROMPT_LENGTH = 2000; // idea (max 1000 in the editor) + the answers to the 3 questions
 const MAX_ADVANCED_PROMPT_LENGTH = 6000; // idea + the answers to the advanced website questions
-const MAX_INSTRUCTION_LENGTH = 1000;
-const MAX_CODE_LENGTH = 150000; // multi-file modules are bigger than the old single files
+const MAX_INSTRUCTION_LENGTH = 3000;
+const MAX_CODE_LENGTH = 600000; // a full-size frontend (20 to 35 files) is well above the old 150000 limit
 
 // Managed thinking: how many "thinking" tokens each agent may use. Enough to plan well, small enough that the
 // build finishes inside the time limit (a huge budget made builds time out). GEMINI_THINKING_BUDGET overrides all of them.
@@ -153,11 +153,86 @@ export async function POST(req: Request) {
       if (balanceAfterReserve === null) return outOfTokens(CUSTOMIZE_COST);
 
       try {
-        const customPrompt = `You are a senior full-stack AI agent updating the "${agent}" module.\n${customizeHint(agent)}\n\nCurrent Code/Spec:\n${currentCode}\n\nUser Instruction: ${instruction}${attached.textBlock}\n\nReturn ONLY the updated code or markdown without explanations.`;
-        let updatedCode = await callAI(customPrompt, { attachments: attached.media, thinkingBudget: 2048 });
+        const isFileModule = agent === "frontend" || agent === "backend";
+        const defaultPath = agent === "backend" ? "app/api/route.ts" : "app/page.tsx";
+
+        // Context the build agents had: the idea and the contract (SRS sections 5, 6, 7). Read from the saved build
+        // (ownership checked); the editor's own spec is used when it is newer (the person may have edited it).
+        const saved = historyId
+          ? await db.generationHistory
+              .findFirst({ where: { id: historyId, userId: session.user.id }, select: { prompt: true, spec: true, frontend: true, backend: true, database: true } })
+              .catch(() => null)
+          : null;
+        const idea = (saved?.prompt || prompt).slice(0, 6000);
+        const clientSpec = typeof body.spec === "string" && !/^\/\/ Locked on Free Plan/.test(body.spec) ? body.spec.slice(0, 120000) : "";
+        const specText = agent === "spec" ? currentCode : clientSpec || saved?.spec || "";
+        const contract = agent === "spec" ? "" : (contractSections(specText) || specText).slice(0, 60000);
+
+        // Read-only hints from the other modules so new code lines up with what already exists.
+        let siblings = "";
+        if (agent === "frontend" && saved?.backend) {
+          const routes = parseFiles(saved.backend, "app/api/route.ts").map((f) => f.path).filter((p) => /route\.ts$/.test(p));
+          if (routes.length) siblings = `BACKEND ROUTES THAT EXIST (read-only):\n${routes.join("\n")}`;
+        }
+        if (agent === "backend" && saved?.database) siblings = `DATABASE SCHEMA (read-only):\n${saved.database.slice(0, 30000)}`;
+
+        const basePrompt = customizePrompt(agent, { idea, instruction, currentCode, contract, siblings, attachmentsText: attached.textBlock });
+        const think = isFileModule ? 4096 : 2048;
+
+        // Pull the "ALSO UPDATE" line and the DELETE lines out of the answer.
+        const ALSO = /^=== ALSO UPDATE:\s*(.*?)\s*===\s*$/im;
+        const DEL = /^=== DELETE:\s*(.+?)\s*===\s*$/gim;
+        const interpret = (raw: string) => {
+          const also = (raw.match(ALSO)?.[1] || "")
+            .toLowerCase()
+            .split(/[,\s]+/)
+            .filter((m) => ["spec", "frontend", "backend", "database"].includes(m) && m !== agent);
+          const deletes = [...raw.matchAll(DEL)].map((m) => cleanPath(m[1])).filter((p): p is string => !!p);
+          const text = raw.replace(ALSO, "").replace(DEL, "").trim();
+          return { text, also: [...new Set(also)], deletes };
+        };
+
+        // File modules: the AI returns only the files it changed; they are merged over the existing files, so a
+        // change can never wipe the other pages and the answer is never cut off by the output limit.
+        const apply = (raw: string) => {
+          const r = interpret(raw);
+          if (!isFileModule) return { code: r.text, also: r.also, deletes: r.deletes };
+          const existing = parseFiles(currentCode, defaultPath);
+          const updates = parseFiles(r.text, defaultPath);
+          if (!/^=== FILE: /m.test(r.text) && existing.length > 1) {
+            return { code: currentCode, also: r.also, deletes: r.deletes, empty: true }; // no usable files came back
+          }
+          const merged = new Map(existing.map((f) => [f.path, f]));
+          for (const u of updates) merged.set(u.path, u);
+          for (const d of r.deletes) merged.delete(d);
+          return { code: serializeFiles([...merged.values()]), also: r.also, deletes: r.deletes, empty: updates.length === 0 && r.deletes.length === 0 };
+        };
+        const check = (code: string): string[] =>
+          agent === "frontend" ? validateFrontend(code) : agent === "backend" ? validateBackend(code) : agent === "database" ? validateSchema(code) : agent === "spec" ? validateSrs(code) : [];
+
+        let result = apply(await callAI(basePrompt, { attachments: attached.media, thinkingBudget: think }));
+        let issues = result.empty ? ["Your answer did not contain any files in the required format."] : check(result.code);
+        if (issues.length) {
+          // Same safety net as the build: tell the agent what is wrong and ask once more.
+          const again = apply(
+            await callAI(
+              `${basePrompt}\n\nYOUR PREVIOUS ANSWER HAD THESE PROBLEMS. Fix all of them and answer again in the required format:\n- ${issues.join("\n- ")}`,
+              { attachments: attached.media, thinkingBudget: 1024 }
+            )
+          );
+          const issues2 = again.empty ? ["Your answer did not contain any files in the required format."] : check(again.code);
+          if (issues2.length <= issues.length) {
+            result = again;
+            issues = issues2;
+          }
+        }
+        if (result.empty || !result.code.trim() || (!isFileModule && agent !== "flow" && agent !== "qa" && issues.some((i) => /far too short|defines no models|no datasource/.test(i)))) {
+          throw new Error("The change could not be applied this time. Your token was returned, please try again (a shorter, more specific instruction helps).");
+        }
+
+        let updatedCode = result.code;
         await logActivity(session.user.id, "CUSTOMIZE", `[${agent}] ${instruction}`, CUSTOMIZE_COST);
-        if (agent === "frontend") updatedCode = normalizeFiles(updatedCode, "app/page.tsx");
-        if (agent === "backend") updatedCode = normalizeFiles(updatedCode, "app/api/route.ts");
+        if (isFileModule) updatedCode = normalizeFiles(updatedCode, defaultPath);
 
         // Persist the edit so it survives a refresh / closing the tab.
         if (historyId) {
@@ -171,6 +246,8 @@ export async function POST(req: Request) {
 
         return NextResponse.json({
           updatedCode,
+          alsoUpdate: result.also, // other modules that need a matching change
+          warnings: issues,
           tier: user.tier,
           tokenBalance: balanceAfterReserve,
           aiProviders: providersUsed,

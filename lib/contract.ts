@@ -16,7 +16,7 @@ export function validateContract(text: string): string[] {
 }
 
 /** Text of sections 5 to the end of the contract (or "" if section 5 is missing). */
-function contractSections(contract: string): string {
+export function contractSections(contract: string): string {
   const m = SECTION_START(5).exec(contract);
   return m ? contract.slice(m.index).trim() : "";
 }

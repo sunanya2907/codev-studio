@@ -221,15 +221,63 @@ BACKEND FILES: ${backendFiles.join(", ") || "(none)"}
 SRS:
 ${srs}`;
 
-export const customizeHint = (agent: string): string => {
-  if (agent === "frontend" || agent === "backend") {
-    return `This module is a set of files in the format "=== FILE: path ===". Return ALL files (changed and unchanged) in the same format, nothing else. Keep names and API paths consistent with the SRS contracts. Allowed imports stay the same.`;
-  }
-  if (agent === "flow") {
-    return `This is Markdown with mermaid flowcharts and plain-text pseudocode. Return the COMPLETE updated Markdown. Keep each mermaid block valid: it starts with "flowchart TD", every node label is in double quotes, no parentheses inside labels, at most 14 nodes per diagram.`;
-  }
-  if (agent === "spec") {
-    return `This is an SRS. Keep its section structure. If you change section 5, 6 or 7, keep names consistent because other agents depend on them.`;
-  }
-  return "";
+export type CustomizeContext = {
+  idea: string;
+  instruction: string;
+  currentCode: string;
+  contract?: string; // SRS sections 5, 6, 7 (the binding contract the whole app was built from)
+  siblings?: string; // read-only context from the other modules (route list, schema, ...)
+  attachmentsText?: string;
+};
+
+const CUSTOMIZE_COMMON = `HOW TO CUSTOMIZE: do EXACTLY what the instruction asks, completely and working, never a placeholder or "coming soon". Scale the work to the request: a small tweak (a colour, a text, a layout) changes only what it names; a new feature is built the way the original build would build it (every page, API route and data field it needs, plus its admin management where it fits). Everything that already works must keep working, and names, paths and shapes must stay consistent with the CONTRACT.`;
+
+const CUSTOMIZE_FILES_OUTPUT = `OUTPUT FORMAT (strict): return ONLY the files you create or change, each as
+=== FILE: <relative/path.ext> ===
+<COMPLETE new contents of that file>
+Never return a snippet, never write "...rest unchanged...", and do not return files you did not change (they are kept automatically). To delete a file, write a line === DELETE: <path> === on its own. As the very LAST line write === ALSO UPDATE: <comma separated list of the OTHER modules among spec, frontend, backend, database that need a matching change for this request, or none> ===. No markdown fences, no explanations.`;
+
+const CUSTOMIZE_DOC_OUTPUT = `OUTPUT FORMAT (strict): return the COMPLETE updated module (not only the changed part), then, as the very LAST line, write === ALSO UPDATE: <comma separated list of the OTHER modules among spec, frontend, backend, database that need a matching change for this request, or none> ===. No explanations.`;
+
+const CUSTOMIZE_RULES: Record<string, string> = {
+  frontend: `RULES (same as the original build):
+- Every file using hooks, state or events starts with "use client";.
+- Allowed imports ONLY: react, next/link, next/navigation, lucide-react, and your own files via "@/..." . No other packages.
+- Responsive, mobile-first dark Tailwind UI (works from 320px phones to desktops, no horizontal scrolling, tap targets of at least 44px, inputs with text-base), with loading, empty and error states and forms with validation. Wrap every localStorage/sessionStorage access in try/catch.
+- Load and save real data through lib/api.ts (credentials: "include") using EXACTLY the paths, methods and JSON shapes of the CONTRACT (section 6). Never hardcode data that an API returns.
+- Every page you add must be reachable (add a link in the Navbar, dashboard or admin sidebar), have a default export and compile without TypeScript or JSX errors. Protected pages redirect to /login, admin pages to /admin/login or /dashboard.
+- If the request needs an API route or data field that the CONTRACT or the BACKEND ROUTES below do not have yet, still call the sensible path and list "backend" (and "database") in the ALSO UPDATE line.`,
+  backend: `RULES (same as the original build):
+- Next.js App Router route handlers with TypeScript and Prisma. Import Prisma ONLY as: import { db } from "@/lib/db";
+- Allowed packages ONLY: next, zod, @prisma/client, jose, bcryptjs.
+- Validate every input with zod (schemas live in lib/validators.ts: if you add one, return that file in full) and return JSON errors { "error": "..." } with correct status codes.
+- Protect routes that need auth, check role === "ADMIN" on the server for /api/admin/**, scope data to the logged-in user, never expose passwordHash, wrap handlers in try/catch, and use { params }: { params: Promise<{ id: string }> } with await params for dynamic routes.
+- Model and field names must match the DATABASE SCHEMA below. If the request needs a model or field that does not exist yet, still use the sensible names and list "database" in the ALSO UPDATE line.
+- Every route returns real database data (no mock responses). The code must compile without TypeScript errors.`,
+  database: `RULES (same as the original build):
+- Return the COMPLETE Prisma schema (generator and datasource blocks included, copied from the current one), keeping every existing model, field and relation unless the instruction asks to remove it.
+- Every new model: id String @id @default(cuid()), createdAt DateTime @default(now()), updatedAt DateTime @updatedAt, proper relations with onDelete, @@index on foreign keys and common filters, @unique where needed, enums for fixed value sets.
+- Keep User (email unique, passwordHash, name, role USER/ADMIN, blockedAt) and PasswordReset. Return ONLY schema code, no fences.`,
+  spec: `RULES: keep the section structure (1 Introduction ... 8 Out of Scope). Sections 5, 6 and 7 are the binding contract the code was built from: if you change them keep every name precise and consistent, and list "frontend, backend, database" in the ALSO UPDATE line so the code can be updated to match.`,
+  flow: `This is Markdown with mermaid flowcharts and plain-text pseudocode. Keep each mermaid block valid: it starts with "flowchart TD", every node label is in double quotes, no parentheses inside labels, at most 14 nodes per diagram.`,
+  qa: `This is a QA and security report in Markdown. Keep its section structure.`,
+};
+
+export const customizePrompt = (agent: string, c: CustomizeContext): string => {
+  const isFiles = agent === "frontend" || agent === "backend";
+  const output = isFiles ? CUSTOMIZE_FILES_OUTPUT : agent === "flow" || agent === "qa" ? "Return ONLY the COMPLETE updated Markdown, nothing else." : CUSTOMIZE_DOC_OUTPUT;
+  return `You are a senior full-stack engineer updating the "${agent}" module of an EXISTING web app (Next.js App Router + TypeScript + Tailwind + Prisma). Think through the whole change first: what the person wants, every place it touches, and what must not break.
+
+APP IDEA: ${c.idea || "(not given)"}
+
+${CUSTOMIZE_COMMON}
+
+${CUSTOMIZE_RULES[agent] || ""}
+
+${c.contract ? `CONTRACT (SRS sections 5, 6, 7: the data model, API and pages this app is built from):\n${c.contract}\n\n` : ""}${c.siblings ? `${c.siblings}\n\n` : ""}CURRENT ${agent.toUpperCase()} MODULE:
+${c.currentCode}
+
+USER INSTRUCTION: ${c.instruction}${c.attachmentsText || ""}
+
+${output}`;
 };

@@ -143,7 +143,7 @@ async function sourceSnippets(stack: string, route?: string | null): Promise<str
   const seen = new Set<string>();
   for (const w of wanted) {
     if (out.length >= 2) break;
-    const abs = path.resolve(root, w.file);
+    const abs = path.resolve(/*turbopackIgnore: true*/ root, w.file);
     if (seen.has(abs) || !abs.startsWith(root + path.sep) || !/\.tsx?$/.test(abs)) continue;
     seen.add(abs);
     try {

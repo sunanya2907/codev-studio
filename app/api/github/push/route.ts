@@ -66,9 +66,10 @@ export async function POST(req: Request) {
     for (const f of Array.isArray(body.files) ? (body.files as { path?: unknown; content?: unknown }[]) : []) {
       if (typeof f?.path !== "string" || typeof f?.content !== "string") continue;
       const path = cleanPath(f.path);
+      if (!path) continue;
       const base = path.split("/").pop() || "";
       const secretEnv = /^\.env/.test(base) && base !== ".env.example"; // never push real secrets
-      if (!path || secretEnv || /(^|\/)(node_modules|\.next|\.git)(\/|$)/.test(path)) continue;
+      if (secretEnv || /(^|\/)(node_modules|\.next|\.git)(\/|$)/.test(path)) continue;
       total += f.content.length;
       if (total > MAX_TOTAL) return NextResponse.json({ error: "The project is too large to push in one go." }, { status: 413 });
       seen.set(path, f.content);
