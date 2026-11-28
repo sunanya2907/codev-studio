@@ -497,6 +497,7 @@ export function buildPreviewHtml(frontendCode: string): string {
     "img-src data: blob: https:",
     "font-src data: https:",
     "connect-src 'none'",
+    "form-action 'none'",
   ].join("; ");
 
   const fileMap: Record<string, string> = {};

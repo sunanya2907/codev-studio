@@ -1843,7 +1843,7 @@ export default function EditorClient({
                 <iframe
                   title="Live App Preview"
                   srcDoc={previewHtml}
-                  sandbox="allow-scripts allow-modals"
+                  sandbox="allow-scripts allow-modals allow-forms"
                   className="w-full h-full border-0"
                 />
                 {previewFull && (
