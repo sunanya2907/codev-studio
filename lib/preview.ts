@@ -20,7 +20,8 @@ const REACT_URL = "https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react
 const REACT_DOM_URL = "https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js";
 const BABEL_URL = "https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.26.4/babel.min.js";
 const TAILWIND_URL = "https://cdn.tailwindcss.com/3.4.16";
-const LUCIDE_URL = "https://cdnjs.cloudflare.com/ajax/libs/lucide/0.468.0/umd/lucide.min.js";
+const LUCIDE_URL = "https://cdn.jsdelivr.net/npm/lucide@0.468.0/dist/umd/lucide.min.js";
+const LUCIDE_FALLBACK_URL = "https://cdnjs.cloudflare.com/ajax/libs/lucide/0.468.0/lucide.min.js";
 
 
 /**
@@ -96,6 +97,20 @@ const RUNTIME = String.raw`
   }
 
   var React = window.React;
+
+  // The preview has no backend (network access is blocked on purpose). Write requests (login, register, save...)
+  // are answered with a simulated success so those buttons respond. Read requests still fail like offline.
+  window.fetch = function (input, init) {
+    var method = String((init && init.method) || (input && input.method) || "GET").toUpperCase();
+    if (method === "GET" || method === "HEAD") {
+      return Promise.reject(new TypeError("Preview has no backend"));
+    }
+    var body = JSON.stringify({
+      ok: true, success: true, message: "Simulated in preview",
+      user: { id: "preview-user", name: "Preview User", email: "preview@example.com" }, token: "preview-token"
+    });
+    return Promise.resolve(new Response(body, { status: 200, headers: { "Content-Type": "application/json" } }));
+  };
   var files = window.__PREVIEW_FILES__ || {};
   var hasOwn = function (o, k) { return Object.prototype.hasOwnProperty.call(o, k); };
 
@@ -156,7 +171,7 @@ const RUNTIME = String.raw`
           return React.createElement(part[0], a);
         });
       } else {
-        kids = [React.createElement("rect", { key: 0, x: 4, y: 4, width: 16, height: 16, rx: 4 })];
+        kids = []; // unknown icon: draw nothing instead of a placeholder box
       }
       return React.createElement.apply(React, ["svg", attrs].concat(kids));
     };
@@ -222,10 +237,17 @@ const RUNTIME = String.raw`
     }),
     "next-auth/react": {
       useSession: function () { return { data: null, status: "unauthenticated" }; },
-      signIn: function () {
+      signIn: function (provider, opts) {
+        var o = opts && typeof opts === "object" ? opts : {};
+        var okResult = { ok: true, error: null, status: 200, url: "/" };
+        if (typeof provider === "string") {
+          // signIn("credentials" | "google" | ...): the preview signs the visitor in right away.
+          if (o.redirect !== false) navigate(o.callbackUrl || (matchPage("/dashboard") ? "/dashboard" : "/"));
+          return Promise.resolve(okResult);
+        }
         var cands = ["/login", "/signin", "/sign-in", "/auth/login", "/auth/signin", "/auth"];
         for (var i = 0; i < cands.length; i++) { if (matchPage(cands[i])) { navigate(cands[i]); break; } }
-        return Promise.resolve(undefined);
+        return Promise.resolve(okResult);
       },
       signOut: function () { navigate("/"); return Promise.resolve(undefined); },
       SessionProvider: passthrough
@@ -415,7 +437,7 @@ export function buildPreviewHtml(frontendCode: string): string {
   // previewed code can't call APIs or send data anywhere.
   const csp = [
     "default-src 'none'",
-    "script-src 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://cdn.tailwindcss.com",
+    "script-src 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://cdn.tailwindcss.com",
     "style-src 'unsafe-inline' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com",
     "img-src data: blob: https:",
     "font-src data: https:",
@@ -444,6 +466,7 @@ export function buildPreviewHtml(frontendCode: string): string {
     <script src="${REACT_DOM_URL}"></script>
     <script src="${BABEL_URL}"></script>
     <script src="${LUCIDE_URL}"></script>
+    <script>if(!window.lucide){document.write('<scr'+'ipt src="${LUCIDE_FALLBACK_URL}"></scr'+'ipt>')}</script>
     <script>window.__PREVIEW_FILES__ = ${toScriptJson(fileMap)};</script>
     <script>${RUNTIME}</script>
   </body>
