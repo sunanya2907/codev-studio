@@ -98,6 +98,19 @@ const RUNTIME = String.raw`
 
   var React = window.React;
 
+  // Wrapped React: if a generated file renders a component that is undefined (bad import / missing export),
+  // say WHICH file and line instead of the unreadable "Minified React error #130".
+  var AppReact = {};
+  for (var rk in React) AppReact[rk] = React[rk];
+  AppReact.createElement = function (type, props) {
+    if (type === undefined || type === null) {
+      var src = props && props.__source;
+      var where = src ? " in " + src.fileName + " (line " + src.lineNumber + ")" : "";
+      throw new Error("A component" + where + " is " + String(type) + ".\nUsually an import that does not exist or a missing export. Check the import lines at the top of that file.");
+    }
+    return React.createElement.apply(React, arguments);
+  };
+
   // The preview has no backend (network access is blocked on purpose). Write requests (login, register, save...)
   // are answered with a simulated success so those buttons respond. Read requests still fail like offline.
   window.fetch = function (input, init) {
@@ -202,21 +215,53 @@ const RUNTIME = String.raw`
   var noop = function () {};
   var router = { push: navigate, replace: navigate, back: noop, forward: noop, refresh: noop, prefetch: noop };
 
-  function stubModule(name) {
-    if (notices.indexOf(name) === -1) notices.push(name);
-    var fn = function () { return null; };
-    return new Proxy(fn, {
-      get: function (_t, key) {
-        if (key === "__esModule") return false;
-        if (key === "default") return passthrough;
-        return passthrough;
-      },
-      apply: function () { return null; }
+  var MOTION_PROPS = ["initial", "animate", "exit", "transition", "variants", "whileHover", "whileTap", "whileInView", "whileFocus", "whileDrag", "viewport", "layout", "layoutId", "drag", "dragConstraints", "custom", "onAnimationComplete", "transformTemplate"];
+  var TAGS = /^(a|abbr|article|aside|b|button|canvas|circle|code|div|em|figure|footer|form|g|h[1-6]|header|hr|i|img|input|label|li|line|main|nav|ol|option|p|path|polygon|pre|rect|section|select|small|span|strong|svg|table|tbody|td|text|textarea|th|thead|tr|ul|video)$/;
+  var RESERVED = /^(prototype|displayName|defaultProps|propTypes|contextTypes|name|length|caller|arguments|isReactComponent|then|toJSON|call|apply|bind)$/;
+  var tagCache = {};
+  function tagComponent(tag) {
+    return tagCache[tag] || (tagCache[tag] = function (props) {
+      var p = {};
+      for (var k in props) if (MOTION_PROPS.indexOf(k) === -1) p[k] = props[k];
+      return React.createElement(tag, p, props && props.children);
     });
   }
+  // Packages the preview does not have (for example framer-motion): motion.div renders a plain div,
+  // other components just show their children, use* hooks return an empty object. Nothing is undefined.
+  function makeStub() {
+    var target = function () {};
+    return new Proxy(target, {
+      get: function (_t, key) {
+        if (key === "__esModule") return true;
+        if (typeof key !== "string") return undefined;
+        if (key === "default") return stubRoot;
+        if (RESERVED.test(key) || key === "$$typeof") return undefined;
+        if (/^use[A-Z]/.test(key)) return function () { return {}; };
+        if (TAGS.test(key)) return tagComponent(key);
+        if (/^[A-Z]/.test(key)) return passthrough;
+        return makeStub();
+      },
+      apply: function (_t, _this, args) {
+        var a = args[0];
+        if (typeof a === "function" || typeof a === "string") return a;
+        return a && a.children != null ? a.children : null;
+      }
+    });
+  }
+  var stubRoot = makeStub();
+  function stubModule(name) {
+    if (notices.indexOf(name) === -1) notices.push(name);
+    return stubRoot;
+  }
+
+  function iconFor(key) { return iconCache[key] || (iconCache[key] = makeIcon(key)); }
+  var lucideNamespace = new Proxy({}, {
+    get: function (_t, key) { return typeof key === "string" && key !== "then" ? iconFor(key) : undefined; },
+    has: function () { return true; }
+  });
 
   var modules = {
-    "react": React,
+    "react": AppReact,
     "react-dom": window.ReactDOM,
     "react-dom/client": window.ReactDOM,
     "react/jsx-runtime": { jsx: React.createElement, jsxs: React.createElement, Fragment: React.Fragment },
@@ -254,10 +299,13 @@ const RUNTIME = String.raw`
     },
     "lucide-react": new Proxy({}, {
       get: function (_t, key) {
-        if (key === "__esModule") return false;
-        if (typeof key !== "string") return undefined;
-        return iconCache[key] || (iconCache[key] = makeIcon(key));
-      }
+        if (key === "__esModule") return true; // so "import * as Icons from 'lucide-react'" keeps working
+        if (typeof key !== "string" || key === "default" || key === "then") return undefined;
+        if (key === "icons") return lucideNamespace;
+        if (key === "createLucideIcon") return function (name) { return iconFor(name); };
+        return iconFor(key);
+      },
+      has: function () { return true; }
     })
   };
 
@@ -305,7 +353,7 @@ const RUNTIME = String.raw`
     try {
       compiled = window.Babel.transform(files[path], {
         filename: path,
-        presets: [["typescript", { isTSX: true, allExtensions: true }], "react"],
+        presets: [["typescript", { isTSX: true, allExtensions: true }], ["react", { development: true }]],
         plugins: ["transform-modules-commonjs"],
         sourceType: "module"
       }).code;
@@ -313,7 +361,7 @@ const RUNTIME = String.raw`
       throw new Error("Could not compile " + path + ":\n" + String(err && err.message ? err.message : err));
     }
     try {
-      new Function("require", "module", "exports", "React", compiled)(makeRequire(path), mod, mod.exports, React);
+      new Function("require", "module", "exports", "React", compiled)(makeRequire(path), mod, mod.exports, AppReact);
     } catch (err) {
       throw new Error("Error while loading " + path + ":\n" + String(err && err.message ? err.message : err));
     }
