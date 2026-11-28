@@ -20,6 +20,7 @@ const REACT_URL = "https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react
 const REACT_DOM_URL = "https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js";
 const BABEL_URL = "https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.26.4/babel.min.js";
 const TAILWIND_URL = "https://cdn.tailwindcss.com/3.4.16";
+const LUCIDE_URL = "https://cdnjs.cloudflare.com/ajax/libs/lucide/0.468.0/umd/lucide.min.js";
 
 
 /**
@@ -116,14 +117,51 @@ const RUNTIME = String.raw`
   // ---- module shims -------------------------------------------------------
   function passthrough(props) { return props && props.children != null ? props.children : null; }
 
-  function Icon(props) {
-    var size = (props && (props.size || props.width)) || 24;
-    return React.createElement("svg", {
-      width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor",
-      strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round",
-      className: props && props.className, "aria-hidden": "true"
-    }, React.createElement("rect", { x: 4, y: 4, width: 16, height: 16, rx: 4 }));
+  // ---- icons: real lucide icons (loaded from cdnjs), square placeholder only if one is missing ----
+  var lucideIcons = (window.lucide && window.lucide.icons) || {};
+  var ICON_ALIASES = {
+    Home: "House", Edit: "SquarePen", Edit2: "Pen", Edit3: "PenLine", CheckCircle: "CircleCheckBig",
+    CheckCircle2: "CircleCheck", AlertCircle: "CircleAlert", AlertTriangle: "TriangleAlert", XCircle: "CircleX",
+    HelpCircle: "CircleHelp", BarChart: "ChartNoAxesColumn", BarChart2: "ChartNoAxesColumn", BarChart3: "ChartColumn",
+    LineChart: "ChartLine", PieChart: "ChartPie", Unlock: "LockOpen", Loader2: "LoaderCircle", Filter: "Funnel",
+    MoreHorizontal: "Ellipsis", MoreVertical: "EllipsisVertical", Slack: "Hash", Github: "Code", Twitter: "Share2"
+  };
+  function findIcon(key) {
+    key = String(key);
+    var base = key.replace(/^Lucide/, "").replace(/Icon$/, "");
+    var tries = [key, base, ICON_ALIASES[base]];
+    for (var i = 0; i < tries.length; i++) {
+      if (tries[i] && hasOwn(lucideIcons, tries[i]) && Array.isArray(lucideIcons[tries[i]])) return lucideIcons[tries[i]];
+    }
+    return null;
   }
+  function camel(n) { return n.replace(/-([a-z])/g, function (_m, c) { return c.toUpperCase(); }); }
+  function makeIcon(key) {
+    var node = findIcon(key);
+    return function Icon(props) {
+      props = props || {};
+      var size = props.size || props.width || 24;
+      var attrs = {
+        width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: props.color || "currentColor",
+        strokeWidth: props.strokeWidth || 2, strokeLinecap: "round", strokeLinejoin: "round",
+        className: props.className ? "lucide " + props.className : "lucide", "aria-hidden": "true",
+        style: props.style, onClick: props.onClick
+      };
+      var kids;
+      if (node) {
+        kids = node.map(function (part, i) {
+          var a = { key: i };
+          var src = part[1] || {};
+          for (var k in src) a[camel(k)] = src[k];
+          return React.createElement(part[0], a);
+        });
+      } else {
+        kids = [React.createElement("rect", { key: 0, x: 4, y: 4, width: 16, height: 16, rx: 4 })];
+      }
+      return React.createElement.apply(React, ["svg", attrs].concat(kids));
+    };
+  }
+  var iconCache = {};
 
   function Link(props) {
     var p = {};
@@ -184,10 +222,20 @@ const RUNTIME = String.raw`
     }),
     "next-auth/react": {
       useSession: function () { return { data: null, status: "unauthenticated" }; },
-      signIn: noop, signOut: noop, SessionProvider: passthrough
+      signIn: function () {
+        var cands = ["/login", "/signin", "/sign-in", "/auth/login", "/auth/signin", "/auth"];
+        for (var i = 0; i < cands.length; i++) { if (matchPage(cands[i])) { navigate(cands[i]); break; } }
+        return Promise.resolve(undefined);
+      },
+      signOut: function () { navigate("/"); return Promise.resolve(undefined); },
+      SessionProvider: passthrough
     },
     "lucide-react": new Proxy({}, {
-      get: function (_t, key) { return key === "__esModule" ? false : Icon; }
+      get: function (_t, key) {
+        if (key === "__esModule") return false;
+        if (typeof key !== "string") return undefined;
+        return iconCache[key] || (iconCache[key] = makeIcon(key));
+      }
     })
   };
 
@@ -327,6 +375,24 @@ const RUNTIME = String.raw`
     return;
   }
 
+  // Plain <a href="/page"> links and <form> submits would otherwise navigate (and blank) the iframe.
+  document.addEventListener("click", function (e) {
+    if (!e || e.defaultPrevented) return;
+    var el = e.target;
+    while (el && el.nodeType === 1 && el.tagName !== "A") el = el.parentNode;
+    if (!el || el.nodeType !== 1 || !el.getAttribute) return;
+    var href = el.getAttribute("href");
+    if (href == null) return;
+    e.preventDefault();
+    if (href.charAt(0) === "#") {
+      var t = href.length > 1 ? document.getElementById(href.slice(1)) : null;
+      if (t && t.scrollIntoView) t.scrollIntoView({ behavior: "smooth" });
+      return;
+    }
+    navigate(href);
+  });
+  document.addEventListener("submit", function (e) { if (e && !e.defaultPrevented) e.preventDefault(); });
+
   window.addEventListener("error", function (e) {
     if (e && e.message && !/ResizeObserver/.test(e.message)) console.error(e.message);
   });
@@ -377,6 +443,7 @@ export function buildPreviewHtml(frontendCode: string): string {
     <script src="${REACT_URL}"></script>
     <script src="${REACT_DOM_URL}"></script>
     <script src="${BABEL_URL}"></script>
+    <script src="${LUCIDE_URL}"></script>
     <script>window.__PREVIEW_FILES__ = ${toScriptJson(fileMap)};</script>
     <script>${RUNTIME}</script>
   </body>
