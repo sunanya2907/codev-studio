@@ -166,6 +166,9 @@ const RUNTIME = String.raw`
   function camel(n) { return n.replace(/-([a-z])/g, function (_m, c) { return c.toUpperCase(); }); }
   function makeIcon(key) {
     var node = findIcon(key);
+    // some lucide builds store an icon as ["svg", attrs, [children]]; others as just [children]
+    if (node && node[0] === "svg" && Array.isArray(node[2])) node = node[2];
+    if (node) node = node.filter(function (part) { return Array.isArray(part) && typeof part[0] === "string"; });
     return function Icon(props) {
       props = props || {};
       var size = props.size || props.width || 24;
@@ -410,11 +413,15 @@ const RUNTIME = String.raw`
   Boundary.prototype = Object.create(React.Component.prototype);
   Boundary.prototype.constructor = Boundary;
   Boundary.getDerivedStateFromError = function (error) { return { error: error }; };
+  Boundary.prototype.componentDidCatch = function (_error, info) {
+    var st = info && info.componentStack ? String(info.componentStack).split("\n").slice(0, 9).join("\n") : "";
+    if (st) this.setState({ stack: st });
+  };
   Boundary.prototype.render = function () {
     if (this.state.error) {
       return React.createElement("pre", {
         style: { margin: 24, padding: "16px 18px", border: "1px solid #7f1d1d", background: "#1c0a0a", color: "#fecaca", borderRadius: 12, font: "13px/1.5 ui-monospace,Menlo,monospace", whiteSpace: "pre-wrap" }
-      }, "The generated app crashed:\n\n" + String(this.state.error && this.state.error.message || this.state.error));
+      }, "The generated app crashed:\n\n" + String(this.state.error && this.state.error.message || this.state.error) + (this.state.stack ? "\n\nWhere:" + this.state.stack : ""));
     }
     return this.props.children;
   };
